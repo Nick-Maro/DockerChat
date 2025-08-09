@@ -1,50 +1,47 @@
-# Bytecode e cache Python
+
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Cartelle virtualenv/local
 env/
 venv/
 .venv/
 ENV/
 *.egg-info/
 
-# File temporanei e log
+
 *.log
 *.tmp
 *.swp
 *.bak
 
-# File di upload ricevuti
 file-receiver/uploads/*
 
-# Regole dinamiche e log generati
+
 firewall/rules.json
 honeypot/log.txt
 file-receiver/log.txt
 
-# Variabili d’ambiente
+
 .env
 
-# File temporanei di Docker
 *.pid
 
-# Docker compose volume mount (es. se usi named volumes locali)
+
 volumes/
 
-# Build React (se usi React per la dashboard)
+
 dashboard/build/
 dashboard/node_modules/
 
-# PyCharm / VS Code / JetBrains IDE
+
 .idea/
 .vscode/
 
-# Filesystem OS
+
 .DS_Store
 Thumbs.db
 
-# Draw.io cache
+
 docs/*.drawio.bak

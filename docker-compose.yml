@@ -14,8 +14,11 @@ services:
 
   reverse-proxy:
     build: ./reverse-proxy
+    container_name: reverse-proxy
     volumes:
       - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080" 
     networks:
       - net
     depends_on:
@@ -24,6 +27,7 @@ services:
 
   server1:
     build: ./backend-servers/server1
+    container_name: server1
     volumes:
       - ./backend-servers/server1:/app
     expose:
@@ -33,6 +37,7 @@ services:
 
   server2:
     build: ./backend-servers/server2
+    container_name: server2
     volumes:
       - ./backend-servers/server2:/app
     expose:

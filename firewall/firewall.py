@@ -3,8 +3,6 @@ import socket
 import threading
 import os
 import logger
-
-
 from dotenv import load_dotenv
 load_dotenv()
 
