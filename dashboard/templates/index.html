@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8" />
+    <title>Dashboard Firewall</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Dashboard Firewall</h1>
+    <p>Status: <strong>{{ 'Attivo' if status.active else 'Non Attivo' }}</strong></p>
+    <h2>Regole attive</h2>
+    <ul>
+        {% for rule in status.rules %}
+            <li>{{ rule }}</li>
+        {% endfor %}
+    </ul>
+    <h2>IP bloccati</h2>
+    <ul>
+        {% for ip in status.blocked_ips %}
+            <li>{{ ip }}</li>
+        {% endfor %}
+    </ul>
+    <h2>Log recenti</h2>
+    <ul>
+        {% for log in status.logs %}
+            <li>{{ log }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
