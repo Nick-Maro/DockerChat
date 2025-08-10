@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firewall - Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-dark text-light">
+<div class="container mt-4">
+    <h2>Gestione Regole Firewall</h2>
+    <form method="post">
+        <textarea name="rules" class="form-control" rows="15">{{ rules }}</textarea>
+        <button class="btn btn-success mt-3">Aggiorna Regole</button>
+    </form>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Torna alla Home</a>
+</div>
+</body>
+</html>

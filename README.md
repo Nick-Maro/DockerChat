@@ -120,7 +120,7 @@ Sviluppi Futuri
  Maggiori funzionalità di honeypot
  Supporto a protocolli diversi (es. HTTPS, WebSocket)
  Portare tutto in inglese
- (opzionale) implementare Protocollo udp
+ (opzionale) implementare Protocollo udp.
 
 
 Contribuire

@@ -1,30 +1,17 @@
 <!DOCTYPE html>
-<html lang="it">
+<html>
 <head>
-    <meta charset="UTF-8" />
-    <title>Dashboard Firewall</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Dashboard Sicurezza</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
 </head>
-<body>
-    <h1>Dashboard Firewall</h1>
-    <p>Status: <strong>{{ 'Attivo' if status.active else 'Non Attivo' }}</strong></p>
-    <h2>Regole attive</h2>
-    <ul>
-        {% for rule in status.rules %}
-            <li>{{ rule }}</li>
-        {% endfor %}
-    </ul>
-    <h2>IP bloccati</h2>
-    <ul>
-        {% for ip in status.blocked_ips %}
-            <li>{{ ip }}</li>
-        {% endfor %}
-    </ul>
-    <h2>Log recenti</h2>
-    <ul>
-        {% for log in status.logs %}
-            <li>{{ log }}</li>
-        {% endfor %}
-    </ul>
+<body class="bg-dark text-light">
+    <div class="container mt-4">
+        <h1 class="text-center">Dashboard Sicurezza</h1>
+        <div class="list-group mt-4">
+            <a href="{{ url_for('firewall') }}" class="list-group-item list-group-item-action">Gestione Firewall</a>
+            <a href="{{ url_for('logs') }}" class="list-group-item list-group-item-action">Visualizza Log</a>
+            <a href="{{ url_for('stats') }}" class="list-group-item list-group-item-action">Statistiche</a>
+        </div>
+    </div>
 </body>
 </html>
