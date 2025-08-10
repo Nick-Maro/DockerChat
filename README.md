@@ -1,127 +1,247 @@
-**Progetto Sicurezza di Rete**
-# Descrizione
-Questo progetto implementa un'infrastruttura di sicurezza di rete completa con i seguenti componenti:
+# Network Security Infrastructure Project
 
-Reverse Proxy NGINX per instradare le richieste verso due server backend (server1 e server2)
-Firewall programmabile con regole personalizzate
-Honeypot per intercettare traffico sospetto
-File receiver per ricevere file via rete
-Client Python per inviare file o messaggi ai server backend
-Dashboard per monitorare lo stato della rete (in sviluppo)
+A comprehensive Docker-based network security infrastructure implementing multiple security layers and monitoring capabilities.
 
-Il sistema supporta comunicazione via HTTP per messaggi di testo. Il progetto utilizza Docker Compose per orchestrare i vari container e la rete bridge per l'interconnessione.
-Prerequisiti
+## Architecture Overview
 
-Docker (>= 20.x)
-Docker Compose (>= 1.29.x)
-Python 3.8+ (per eseguire il client manualmente)
-(Opzionale) Certificati SSL/TLS per HTTPS (per future implementazioni)
+This project implements a complete network security infrastructure with the following components:
 
-Installazione e Avvio
+- **NGINX Reverse Proxy**: Load balances requests between two backend servers
+- **Backend Servers**: Two Python Flask servers (server1 & server2) handling requests
+- **Programmable Firewall**: Custom rule-based traffic filtering
+- **Honeypot**: Captures and logs suspicious traffic for analysis
+- **File Receiver**: Network service for secure file uploads
+- **Python Client**: Command-line tool for sending files and messages
+- **Dashboard**: Real-time network monitoring interface (in development)
 
-Clona il repository:
-bashgit clone https://github.com/Nick-Maro/docker-mini-network
+The system supports HTTP communication for text messages and uses Docker Compose for container orchestration with bridge networking.
+
+## Prerequisites
+
+- **Docker**: >= 20.x
+- **Docker Compose**: >= 1.29.x  
+- **Python**: >= 3.8 (for manual client execution)
+- **SSL/TLS Certificates**: Optional, for HTTPS implementation
+
+## Quick Start
+
+### 1. Clone and Setup
+
+```bash
+git clone https://github.com/Nick-Maro/docker-mini-network
 cd docker-mini-network
+```
 
-Costruisci i container Docker:
-bashdocker compose build
+### 2. Build and Deploy
 
-Avvia i container (in background):
-bashdocker compose up -d
-
-Controlla che i container siano attivi:
-bashdocker compose ps
-
-
-Architettura del Progetto
-
-reverse-proxy: NGINX configurato per fare load balancing tra server1 e server2 (porta 8080)
-server1 e server2: backend Python in ascolto sulla porta 5000
-firewall: modulo programmabile per filtrare il traffico tra client e backend
-honeypot: cattura e logga traffico sospetto per analisi
-file-receiver: servizio che riceve file e li salva in /uploads
-client: script Python per inviare file o messaggi ai backend
-dashboard: frontend per visualizzare dati e log di sistema
-
-Come Usare il Client
-
-Entra nella cartella client:
-bashcd client
-
-Avvia il client Python:
-bashpython sender.py
-
-Inserisci quando richiesto:
-
-Host del server: localhost (o IP remoto)
-Porta: 5000 ← la porta su cui è in ascolto il backend
-
-
-Scegli il tipo di invio:
-
-f per inviare un file (inserisci il percorso completo)
-m per inviare un messaggio testuale
-q per uscire
-
-
-
-Il client invierà il file o il messaggio e mostrerà la risposta ricevuta.
-Configurazione del Reverse Proxy (NGINX)
-Il file principale è reverse-proxy/nginx.conf, che contiene:
-
-Un blocco upstream con i server backend (server1, server2) su porta 5000
-Proxy pass verso upstream su porta 8080
-Impostazioni per gestire header utili al backend (es. IP reale, Host)
-
-Test del proxy:
-bashcurl -X POST http://localhost:5000/command -H "Content-Type: application/json" -d "{\"command\":\"ciao\"}"
-Firewall Programmabile
-Il firewall si basa su regole definite in rules.json e gestite tramite script Python (firewall.py, CLI fwcli.py).
-Viene integrato tra client e reverse proxy per filtrare il traffico.
-Honeypot
-L'honeypot registra tentativi di accesso e traffico sospetto. Può essere utilizzato per instradare richieste malevole e analizzare i log.
-Aggiungere TLS/SSL (Sviluppo Futuro)
-Per implementare la sicurezza TLS/SSL:
-
-Configurare certificati SSL (self-signed o Let's Encrypt) per abilitare HTTPS su NGINX
-Estendere la sicurezza anche nel backend
-Modificare il client per usare HTTPS
-Testare la connessione crittografata end-to-end
-
-Log e Debug
-
-I log di NGINX si trovano in /var/log/nginx/ dentro il container reverse-proxy
-I log degli altri servizi sono accessibili tramite docker logs <nome-container>
-Usa docker-compose logs -f per seguire i log in tempo reale
-
-Comandi Utili Docker
-bash# Avvia container in foreground
-docker compose up
-
-# Avvia container in background
-docker compose up -d
-
-# Costruisci o ricostruisci i container
+```bash
+# Build all containers
 docker compose build
 
-# Ferma e rimuovi container
+# Start services in background
+docker compose up -d
+
+# Verify all containers are running
+docker compose ps
+```
+
+### 3. Test the Setup
+
+```bash
+# Test backend connectivity
+curl -X POST http://localhost:5000/command \
+  -H "Content-Type: application/json" \
+  -d '{"command":"hello"}'
+```
+
+## Container Architecture
+
+| Service | Description | Port | Purpose |
+|---------|-------------|------|---------|
+| `reverse-proxy` | NGINX load balancer | 8080 | Routes traffic to backends |
+| `server1` | Python Flask backend | 5000 | Primary application server |
+| `server2` | Python Flask backend | 5000 | Secondary application server |
+| `firewall` | Custom traffic filter | - | Rule-based traffic filtering |
+| `honeypot` | Security monitoring | - | Suspicious traffic capture |
+| `file-receiver` | File upload service | - | Secure file handling |
+| `client` | Python sender script | - | Testing and communication |
+| `dashboard` | Monitoring interface | - | System visualization |
+
+## Using the Client
+
+### Interactive Mode
+
+```bash
+cd client
+python sender.py
+```
+
+Follow the prompts:
+1. **Host**: Enter `localhost` (or remote IP)
+2. **Port**: Enter `5000` 
+3. **Action**: Choose:
+   - `f` - Send a file (provide full path)
+   - `m` - Send a text message
+   - `q` - Quit
+
+### Programmatic Usage
+
+```python
+# Example: Send a message
+python sender.py --host localhost --port 5000 --message "Hello Server"
+
+# Example: Send a file
+python sender.py --host localhost --port 5000 --file "/path/to/file.txt"
+```
+
+## Configuration
+
+### Reverse Proxy (NGINX)
+
+The main configuration is in `reverse-proxy/nginx.conf`:
+
+```nginx
+upstream backend_servers {
+    server server1:5000;
+    server server2:5000;
+}
+
+server {
+    listen 8080;
+    location / {
+        proxy_pass http://backend_servers;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+### Firewall Rules
+
+Rules are defined in `rules.json` and managed via:
+- `firewall.py` - Core filtering logic
+- `fwcli.py` - Command-line interface
+
+### Honeypot Configuration
+
+The honeypot automatically logs:
+- Connection attempts
+- Suspicious traffic patterns
+- Malicious payloads
+- Access attempts to non-existent resources
+
+## Monitoring and Logs
+
+### Container Logs
+
+```bash
+# View all logs in real-time
+docker compose logs -f
+
+# View specific container logs
+docker compose logs -f reverse-proxy
+docker compose logs -f server1
+
+# View logs with timestamps
+docker compose logs -f -t
+```
+
+### NGINX Logs
+
+```bash
+# Access NGINX container
+docker exec -it <reverse-proxy-container-id> /bin/bash
+
+# View access logs
+tail -f /var/log/nginx/access.log
+
+# View error logs
+tail -f /var/log/nginx/error.log
+```
+
+## Useful Docker Commands
+
+```bash
+# Start services (foreground)
+docker compose up
+
+# Start services (background)
+docker compose up -d
+
+# Rebuild containers
+docker compose build --no-cache
+
+# Stop and remove containers
 docker compose down
 
-# Vedi lo stato dei container
+# Remove containers and volumes
+docker compose down -v
+
+# View container status
 docker compose ps
 
-# Vedi log in tempo reale di un container
-docker compose logs -f reverse-proxy
-Sviluppi Futuri
+# Scale backend servers
+docker compose up -d --scale server1=2 --scale server2=2
 
- Integrare TLS/SSL
- Dashboard operativa per monitoraggio in tempo reale
- Regole firewall più complesse
- Maggiori funzionalità di honeypot
- Supporto a protocolli diversi (es. HTTPS, WebSocket)
- Portare tutto in inglese
- (opzionale) implementare Protocollo udp.
+# Execute commands in containers
+docker exec -it <container-name> /bin/bash
+```
+
+## Security Features
+
+### Traffic Filtering
+- Custom firewall rules
+- IP-based blocking/allowing
+- Rate limiting capabilities
+- Protocol-specific filtering
+
+### Monitoring
+- Real-time traffic analysis
+- Suspicious activity detection
+- Comprehensive logging
+- Performance metrics
+
+### Network Isolation
+- Docker bridge networking
+- Container-to-container communication
+- Controlled external access
+- Service discovery
+
+## Development Roadmap
+
+- [ ] **TLS/SSL Integration**
+  - SSL certificate management
+  - HTTPS endpoint configuration  
+  - End-to-end encryption
+
+- [ ] **Enhanced Dashboard**
+  - Real-time monitoring interface
+  - Traffic visualization
+  - Alert management
+  - Performance analytics
+
+- [ ] **Advanced Firewall**
+  - Advanced rule syntax
+  - Threat intelligence integration
+  - Automated response capabilities
+
+- [ ] **Protocol Extensions**
+  - WebSocket support
+  - UDP protocol implementation
+  - Message queuing systems
+
+- [ ] **Production Features**
+  - High availability setup
+  - Database integration
+  - User authentication
+  - API rate limiting
 
 
-Contribuire
-Per contribuire al progetto, seguire le best practices per Docker e la sicurezza di rete. Assicurarsi di testare tutte le modifiche prima di effettuare commit.
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**⚠️ Security Notice**: This is a development/educational project. For production use, ensure proper security hardening, regular updates, and professional security review.
