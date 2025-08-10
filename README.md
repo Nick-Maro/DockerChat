@@ -49,9 +49,7 @@ docker compose ps
 
 ```bash
 # Test backend connectivity
-curl -X POST http://localhost:5000/command \
-  -H "Content-Type: application/json" \
-  -d '{"command":"hello"}'
+curl -X POST http://127.0.0.1:5000/command -H "Content-Type: application/json" -d "{\"command\":\"ciao\"}"
 ```
 
 ## Container Architecture
@@ -95,27 +93,6 @@ python sender.py --host localhost --port 5000 --file "/path/to/file.txt"
 ```
 
 ## Configuration
-
-### Reverse Proxy (NGINX)
-
-The main configuration is in `reverse-proxy/nginx.conf`:
-
-```nginx
-upstream backend_servers {
-    server server1:5000;
-    server server2:5000;
-}
-
-server {
-    listen 8080;
-    location / {
-        proxy_pass http://backend_servers;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
 
 ### Firewall Rules
 
@@ -238,10 +215,5 @@ docker exec -it <container-name> /bin/bash
   - API rate limiting
 
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
 
 **⚠️ Security Notice**: This is a development/educational project. For production use, ensure proper security hardening, regular updates, and professional security review.
