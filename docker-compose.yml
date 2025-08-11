@@ -1,104 +1,203 @@
 
 services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_storage
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+      - shared_logs:/var/log/redis
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+
   firewall:
     build: ./firewall
+    container_name: firewall
     volumes:
       - ./firewall:/app
-      - shared_logs:/app/shared_logs  
+      - shared_logs:/app/shared_logs
     ports:
       - "${FIREWALL_PORT}:${FIREWALL_PORT}"
     networks:
       - net
     depends_on:
-      - reverse-proxy
+      reverse-proxy:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DASHBOARD_PORT=${DASHBOARD_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
 
   reverse-proxy:
     build: ./reverse-proxy
     container_name: reverse-proxy
     volumes:
       - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - shared_logs:/var/log/nginx
     ports:
-      - "8080:8080"
+      - "${REVERSE_PROXY_PORT}:8080"
     networks:
       - net
     depends_on:
       - server1
       - server2
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
 
   server1:
     build: ./backend-servers/server1
     container_name: server1
     volumes:
       - ./backend-servers/server1:/app
+      - shared_logs:/app/shared_logs
     expose:
       - "5000"
     networks:
       - net
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - SERVER_ID=server1
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
+      - BLACKLIST_THRESHOLD=${BLACKLIST_THRESHOLD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/status"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
 
   server2:
     build: ./backend-servers/server2
     container_name: server2
     volumes:
       - ./backend-servers/server2:/app
+      - shared_logs:/app/shared_logs
     expose:
       - "5000"
     networks:
       - net
-
-  honeypot:
-    build: ./honeypot
-    volumes:
-      - ./honeypot:/app
-      - shared_logs:/app/shared_logs  
-    networks:
-      - net
     depends_on:
-      - firewall
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - SERVER_ID=server2
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
+      - BLACKLIST_THRESHOLD=${BLACKLIST_THRESHOLD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/status"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
 
   file-receiver:
     build: ./file-receiver
+    container_name: file-receiver
     volumes:
       - ./file-receiver:/app
       - ./file-receiver/uploads:/app/uploads
-      - shared_logs:/app/shared_logs  
+      - shared_logs:/app/shared_logs
     networks:
       - net
     depends_on:
       - firewall
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
 
   client:
     build: ./client
+    container_name: client
     volumes:
       - ./client:/app
     networks:
       - net
     depends_on:
       - firewall
+    stdin_open: true
+    tty: true
+    profiles:
+      - client 
+
 
   dashboard:
     build: ./dashboard
+    container_name: dashboard
     volumes:
       - ./dashboard:/app
-
       - ./firewall:/app/logs/firewall:ro
-      - ./honeypot:/app/logs/honeypot:ro
       - ./file-receiver:/app/logs/file-receiver:ro
-
       - shared_logs:/app/shared_logs:ro
+      - redis_data:/app/redis_data:ro
     ports:
       - "${DASHBOARD_PORT}:${DASHBOARD_PORT}"
     networks:
       - net
     depends_on:
       - firewall
-      - honeypot
       - file-receiver
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
 
+
+
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - HTTP_USER=${REDIS_COMMANDER_USER}
+      - HTTP_PASSWORD=${REDIS_COMMANDER_PASSWORD}
+    ports:
+      - "${REDIS_COMMANDER_PORT}:8081"
+    networks:
+      - net
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - admin  # docker-compose --profile admin up
 
 volumes:
   shared_logs:
+    driver: local
+  redis_data:
     driver: local
 
 networks:
   net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET}

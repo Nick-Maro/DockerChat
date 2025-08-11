@@ -187,6 +187,9 @@ docker exec -it <container-name> /bin/bash
 
 ## Development Roadmap
 
+- [ ]   **Database**
+- implement database for keys and encrypt before
+
 - [ ] **TLS/SSL Integration**
   - SSL certificate management
   - HTTPS endpoint configuration  

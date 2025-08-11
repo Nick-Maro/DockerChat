@@ -21,8 +21,6 @@ def firewall():
         new_rules = request.form.get("rules")
         try:
             rules_data = json.loads(new_rules)
-            # Nota: questo potrebbe non funzionare se il file è read-only
-            # Considera di implementare un endpoint API nel servizio firewall
             with open(FIREWALL_RULES_PATH, "w") as f:
                 json.dump(rules_data, f, indent=4)
         except PermissionError:
@@ -58,12 +56,12 @@ def stats():
 
 @app.route("/health")
 def health():
-    """Health check endpoint"""
+
     return jsonify({"status": "healthy", "service": "dashboard"})
 
 @app.route("/debug")
 def debug():
-    """Endpoint di debug per verificare l'accesso ai file"""
+
     debug_info = {
         "current_directory": os.getcwd(),
         "firewall_rules_exists": os.path.exists(FIREWALL_RULES_PATH),
@@ -84,7 +82,7 @@ def debug():
     return jsonify(debug_info)
 
 def read_file(path):
-    """Funzione migliorata per leggere i file con gestione errori"""
+
     try:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
