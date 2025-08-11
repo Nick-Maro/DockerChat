@@ -12,7 +12,7 @@ load_dotenv()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RULES_FILE = os.path.join(HERE, "rules.json")
-FIREWALL_PORT = int(os.getenv("FIREWALL_PORT", 5000))
+FIREWALL_PORT = int(os.getenv("FIREWALL_PORT", 5001))
 REVERSE_PROXY_IP = os.getenv("REVERSE_PROXY_IP", "reverse-proxy")
 REVERSE_PROXY_PORT = int(os.getenv("REVERSE_PROXY_PORT", 8080))
 

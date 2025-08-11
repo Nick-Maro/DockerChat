@@ -1,0 +1,8 @@
+{
+  "blocked_ips": [
+    "192.168.1.10",
+    "10.0.0.5"
+  ],
+  "allowed_ports": [8080,80, 443],
+  "max_attempts_per_minute": 5
+}

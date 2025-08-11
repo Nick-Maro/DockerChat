@@ -4,7 +4,6 @@ __pycache__/
 *.pyo
 *.pyd
 
-env/
 venv/
 .venv/
 ENV/
@@ -19,12 +18,12 @@ ENV/
 file-receiver/uploads/*
 
 
-firewall/rules.json
+
 honeypot/log.txt
 file-receiver/log.txt
 
 
-.env
+
 
 *.pid
 
