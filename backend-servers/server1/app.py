@@ -2,10 +2,15 @@ from flask import Flask, request, jsonify
 import uuid
 import json
 import redis
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 
 app = Flask(__name__)
 
+
+CLIENT_TTL = 3600  # 1 hour
+ROOM_TTL = 7200    # 2 hours
+MESSAGE_TTL = 86400  # 24 hours
 
 try:
     redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
@@ -15,9 +20,67 @@ except:
     print("Redis non disponibile, uso storage locale")
     redis_client = None
 
-
 local_rooms = {}
 local_clients = {}
+local_private_messages = {}
+
+def is_expired(timestamp_iso, ttl_seconds):
+
+    try:
+        timestamp = datetime.fromisoformat(timestamp_iso)
+        return datetime.now() - timestamp > timedelta(seconds=ttl_seconds)
+    except:
+        return True
+
+def clean_expired_data():
+ 
+    clients = get_clients()
+    rooms = get_rooms()
+    private_msgs = get_private_messages()
+    
+
+    expired_clients = []
+    for client_id, client_data in clients.items():
+        if is_expired(client_data.get("last_seen", ""), CLIENT_TTL):
+            expired_clients.append(client_id)
+    
+    for client_id in expired_clients:
+        del clients[client_id]
+   
+        for room_id, room_data in rooms.items():
+            if client_id in room_data.get("clients", {}):
+                del room_data["clients"][client_id]
+    
+
+    for room_id, room_data in rooms.items():
+        messages = room_data.get("messages", [])
+        room_data["messages"] = [
+            msg for msg in messages 
+            if not is_expired(msg.get("timestamp", ""), MESSAGE_TTL)
+        ]
+    
+
+    empty_rooms = []
+    for room_id, room_data in rooms.items():
+        if (not room_data.get("clients") or 
+            is_expired(room_data.get("last_activity", ""), ROOM_TTL)):
+            empty_rooms.append(room_id)
+    
+    for room_id in empty_rooms:
+        del rooms[room_id]
+    
+
+    expired_private = []
+    for msg_id, msg_data in private_msgs.items():
+        if is_expired(msg_data.get("timestamp", ""), MESSAGE_TTL):
+            expired_private.append(msg_id)
+    
+    for msg_id in expired_private:
+        del private_msgs[msg_id]
+    
+    set_clients(clients)
+    set_rooms(rooms)
+    set_private_messages(private_msgs)
 
 def get_clients():
     if redis_client:
@@ -53,22 +116,74 @@ def set_rooms(rooms):
             pass
     local_rooms.update(rooms)
 
+def get_private_messages():
+    if redis_client:
+        try:
+            private_data = redis_client.get('private_messages')
+            return json.loads(private_data) if private_data else {}
+        except:
+            return {}
+    return local_private_messages
+
+def set_private_messages(private_msgs):
+    if redis_client:
+        try:
+            redis_client.set('private_messages', json.dumps(private_msgs))
+        except:
+            pass
+    local_private_messages.update(private_msgs)
+
 def add_message_to_room(room_id, message):
     rooms = get_rooms()
     if room_id not in rooms:
-        rooms[room_id] = {"clients": {}, "messages": []}
+        rooms[room_id] = {
+            "clients": {}, 
+            "messages": [],
+            "created_at": datetime.now().isoformat(),
+            "last_activity": datetime.now().isoformat()
+        }
+    
     rooms[room_id]["messages"].append(message)
+    rooms[room_id]["last_activity"] = datetime.now().isoformat()
     set_rooms(rooms)
 
 def add_client_to_room(room_id, client_id, client_data):
     rooms = get_rooms()
     if room_id not in rooms:
-        rooms[room_id] = {"clients": {}, "messages": []}
+        rooms[room_id] = {
+            "clients": {}, 
+            "messages": [],
+            "created_at": datetime.now().isoformat(),
+            "last_activity": datetime.now().isoformat()
+        }
+    
     rooms[room_id]["clients"][client_id] = client_data
+    rooms[room_id]["last_activity"] = datetime.now().isoformat()
     set_rooms(rooms)
+
+def add_private_message(from_client, to_client, message_text, signature=None):
+    private_msgs = get_private_messages()
+    message_id = str(uuid.uuid4())
+    
+    message = {
+        "id": message_id,
+        "from_client": from_client,
+        "to_client": to_client,
+        "text": message_text,
+        "signature": signature,
+        "timestamp": datetime.now().isoformat(),
+        "read": False
+    }
+    
+    private_msgs[message_id] = message
+    set_private_messages(private_msgs)
+    return message_id
 
 @app.route("/command", methods=["POST"])
 def receive_http_command():
+
+    clean_expired_data()
+    
     data = request.get_json()
     
     if not data or "command" not in data:
@@ -78,7 +193,6 @@ def receive_http_command():
     public_key = data.get("public_key")
     client_id = data.get("client_id")
     
-
     debug_info = {
         "server_instance": f"Flask-{id(app)}",
         "redis_available": redis_client is not None,
@@ -86,7 +200,6 @@ def receive_http_command():
         "client_id": client_id
     }
     
-
     if command == "upload_public_key" and public_key:
         if not client_id:
             client_id = str(uuid.uuid4())
@@ -95,7 +208,8 @@ def receive_http_command():
         clients[client_id] = {
             "public_key": public_key,
             "room_id": None,
-            "last_seen": datetime.now().isoformat()
+            "last_seen": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat()
         }
         set_clients(clients)
         
@@ -104,23 +218,24 @@ def receive_http_command():
             "message": "Client registrato con successo!",
             "client_id": client_id,
             "status": "registered",
+            "ttl_info": {
+                "client_ttl_hours": CLIENT_TTL // 3600,
+                "message_ttl_hours": MESSAGE_TTL // 3600
+            },
             "debug": debug_info
         })
     
-
     elif command.startswith("join_room:"):
         room_name = command.split(":", 1)[1]
         clients = get_clients()
         
         if not client_id or client_id not in clients:
             return jsonify({"error": "Client non registrato"}), 400
-        
 
         clients[client_id]["room_id"] = room_name
         clients[client_id]["last_seen"] = datetime.now().isoformat()
         set_clients(clients)
         
-
         add_client_to_room(room_name, client_id, {
             "public_key": clients[client_id]["public_key"],
             "last_seen": datetime.now().isoformat()
@@ -135,7 +250,6 @@ def receive_http_command():
             "debug": debug_info
         })
     
-
     elif command.startswith("send_message:"):
         message_text = command.split(":", 1)[1]
         signature = data.get("signature")
@@ -144,11 +258,13 @@ def receive_http_command():
         if not client_id or client_id not in clients:
             return jsonify({"error": "Client non registrato"}), 400
         
+        clients[client_id]["last_seen"] = datetime.now().isoformat()
+        set_clients(clients)
+        
         room_id = clients[client_id]["room_id"]
         if not room_id:
             return jsonify({"error": "Non sei in nessuna stanza"}), 400
         
-
         message = {
             "from_client": client_id,
             "text": message_text,
@@ -166,12 +282,88 @@ def receive_http_command():
             "debug": debug_info
         })
     
-
+    elif command.startswith("send_private:"):
+        
+        parts = command.split(":", 2)
+        if len(parts) != 3:
+            return jsonify({"error": "Formato comando: send_private:CLIENT_ID:MESSAGGIO"}), 400
+        
+        to_client_id = parts[1]
+        message_text = parts[2]
+        signature = data.get("signature")
+        clients = get_clients()
+        
+        if not client_id or client_id not in clients:
+            return jsonify({"error": "Client non registrato"}), 400
+        
+        if to_client_id not in clients:
+            return jsonify({"error": "Client destinatario non trovato"}), 400
+        
+        
+        clients[client_id]["last_seen"] = datetime.now().isoformat()
+        set_clients(clients)
+        
+        message_id = add_private_message(client_id, to_client_id, message_text, signature)
+        
+        return jsonify({
+            "command": command,
+            "message": f"Messaggio privato inviato a {to_client_id}",
+            "message_id": message_id,
+            "to_client": to_client_id,
+            "debug": debug_info
+        })
+    
+    elif command == "get_private_messages":
+        clients = get_clients()
+        
+        if not client_id or client_id not in clients:
+            return jsonify({"error": "Client non registrato"}), 400
+        
+       
+        clients[client_id]["last_seen"] = datetime.now().isoformat()
+        set_clients(clients)
+        
+        private_msgs = get_private_messages()
+        my_messages = []
+        
+        for msg_id, msg_data in private_msgs.items():
+            if msg_data["to_client"] == client_id or msg_data["from_client"] == client_id:
+                my_messages.append({
+                    "id": msg_id,
+                    "from_client": msg_data["from_client"],
+                    "to_client": msg_data["to_client"],
+                    "text": msg_data["text"],
+                    "timestamp": msg_data["timestamp"],
+                    "read": msg_data["read"],
+                    "direction": "received" if msg_data["to_client"] == client_id else "sent"
+                })
+        
+       
+        my_messages.sort(key=lambda x: x["timestamp"])
+        
+        
+        for msg in my_messages:
+            if msg["direction"] == "received" and not msg["read"]:
+                private_msgs[msg["id"]]["read"] = True
+        
+        set_private_messages(private_msgs)
+        
+        return jsonify({
+            "command": command,
+            "private_messages": my_messages,
+            "total_messages": len(my_messages),
+            "debug": debug_info
+        })
+    
     elif command == "get_messages":
         clients = get_clients()
         
         if not client_id or client_id not in clients:
             return jsonify({"error": "Client non registrato"}), 400
+        
+        
+        clients[client_id]["last_seen"] = datetime.now().isoformat()
+        set_clients(clients)
         
         room_id = clients[client_id]["room_id"]
         if not room_id:
@@ -188,7 +380,34 @@ def receive_http_command():
             "debug": debug_info
         })
     
-
+    elif command == "list_clients":
+        clients = get_clients()
+        
+        if not client_id or client_id not in clients:
+            return jsonify({"error": "Client non registrato"}), 400
+        
+    
+        clients[client_id]["last_seen"] = datetime.now().isoformat()
+        set_clients(clients)
+        
+        client_list = []
+        for cid, client_data in clients.items():
+            if cid != client_id:  
+                client_list.append({
+                    "client_id": cid,
+                    "room_id": client_data.get("room_id"),
+                    "last_seen": client_data.get("last_seen"),
+                    "online": not is_expired(client_data.get("last_seen", ""), CLIENT_TTL)
+                })
+        
+        return jsonify({
+            "command": command,
+            "message": "Lista client disponibili",
+            "clients": client_list,
+            "total_clients": len(client_list),
+            "debug": debug_info
+        })
+    
     elif command == "list_rooms":
         rooms = get_rooms()
         room_list = []
@@ -196,7 +415,9 @@ def receive_http_command():
             room_list.append({
                 "name": room_name,
                 "clients": len(room_data.get("clients", {})),
-                "messages": len(room_data.get("messages", []))
+                "messages": len(room_data.get("messages", [])),
+                "created_at": room_data.get("created_at"),
+                "last_activity": room_data.get("last_activity")
             })
         
         return jsonify({
@@ -206,7 +427,6 @@ def receive_http_command():
             "debug": debug_info
         })
     
-
     elif command == "leave_room":
         clients = get_clients()
         
@@ -218,9 +438,11 @@ def receive_http_command():
             rooms = get_rooms()
             if room_id in rooms and client_id in rooms[room_id].get("clients", {}):
                 del rooms[room_id]["clients"][client_id]
+                rooms[room_id]["last_activity"] = datetime.now().isoformat()
                 set_rooms(rooms)
             
             clients[client_id]["room_id"] = None
+            clients[client_id]["last_seen"] = datetime.now().isoformat()
             set_clients(clients)
             
             return jsonify({
@@ -229,7 +451,23 @@ def receive_http_command():
                 "debug": debug_info
             })
     
+    elif command == "heartbeat":
+        clients = get_clients()
+        
+        if not client_id or client_id not in clients:
+            return jsonify({"error": "Client non registrato"}), 400
+        
 
+        clients[client_id]["last_seen"] = datetime.now().isoformat()
+        set_clients(clients)
+        
+        return jsonify({
+            "command": command,
+            "message": "Heartbeat ricevuto",
+            "client_status": "alive",
+            "debug": debug_info
+        })
+    
     return jsonify({
         "command": command, 
         "message": "Comando sconosciuto",
@@ -237,25 +475,46 @@ def receive_http_command():
             "upload_public_key",
             "join_room:NOME_STANZA",
             "send_message:TESTO", 
+            "send_private:CLIENT_ID:MESSAGGIO",
             "get_messages",
+            "get_private_messages",
             "list_rooms",
-            "leave_room"
+            "list_clients",
+            "leave_room",
+            "heartbeat"
         ],
         "debug": debug_info
     })
 
 @app.route("/status", methods=["GET"])
 def server_status():
+    clean_expired_data()
+    
     clients = get_clients()
     rooms = get_rooms()
+    private_msgs = get_private_messages()
+    
+
+    online_clients = sum(1 for client_data in clients.values() 
+                        if not is_expired(client_data.get("last_seen", ""), CLIENT_TTL))
     
     return jsonify({
         "server_instance": f"Flask-{id(app)}",
         "redis_available": redis_client is not None,
         "total_clients": len(clients),
+        "online_clients": online_clients,
         "total_rooms": len(rooms),
-        "rooms": {name: {"clients": len(data.get("clients", {})), "messages": len(data.get("messages", []))} 
-                 for name, data in rooms.items()}
+        "total_private_messages": len(private_msgs),
+        "ttl_config": {
+            "client_ttl_seconds": CLIENT_TTL,
+            "room_ttl_seconds": ROOM_TTL,
+            "message_ttl_seconds": MESSAGE_TTL
+        },
+        "rooms": {name: {
+            "clients": len(data.get("clients", {})), 
+            "messages": len(data.get("messages", [])),
+            "last_activity": data.get("last_activity")
+        } for name, data in rooms.items()}
     })
 
 if __name__ == "__main__":

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione Redis - Dashboard Sicurezza</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+
+.bg-dark-custom {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  min-height: 100vh;
+}
+
+.card-custom {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.json-viewer {
+  background: #1e1e1e;
+  border: 1px solid #404040;
+  border-radius: 5px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+
+.header-title {
+  background: linear-gradient(45deg, #ffc107, #ffeb3b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: bold;
+}
+
+
+.stat-card {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 235, 59, 0.1) 100%);
+  border: 1px solid rgba(255, 193, 7, 0.2);
+}
+
+
+.danger-zone {
+  background: rgba(220, 53, 69, 0.1);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+
+.btn-danger-custom {
+  background: linear-gradient(45deg, #dc3545, #c82333);
+  border: none;
+  box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+  color: #fff;
+  transition: all 0.3s ease;
+}
+
+.btn-danger-custom:hover {
+  background: linear-gradient(45deg, #c82333, #bd2130);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+}
+
+
+.loading {
+  display: none;
+}
+
+.loading.show {
+  display: inline-block;
+}
+
+
+body {
+  background-color: #121212 !important;
+  color: #ccc !important;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+
+* {
+  color: inherit !important; /* eredita colore da body, sovrascrive in linea */
+}
+
+
+.text-muted {
+  color: #999 !important;
+}
+
+.text-white {
+  color: #fff !important;
+}
+
+
+a, a:hover, a:focus {
+  color: #ddd !important;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+a:hover, a:focus {
+  color: #fff !important;
+}
+
+.lead, p, h4, h5, strong, span, div {
+  color: inherit !important;
+}
+.alert.alert-info {
+  background-color: rgba(100, 149, 237, 0.15); /* un azzurro chiaro trasparente */
+  color: #add8e6; /* azzurro chiaro per il testo */
+  border: 1px solid rgba(100, 149, 237, 0.4);
+  border-radius: 6px;
+  padding: 15px 20px;
+  font-weight: 500;
+  box-shadow: 0 0 8px rgba(100, 149, 237, 0.2);
+}
+
+    </style>
+</head>
+<body class="bg-dark-custom text-light">
+    <div class="container py-4">
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="header-title">
+                    <i class="fas fa-database me-3"></i>
+                    Gestione Redis
+                </h1>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-warning">Dashboard</a></li>
+                        <li class="breadcrumb-item active text-light">Gestione Redis</li>
+                    </ol>
+                </nav>
+            </div>
+            <div>
+                <a href="{{ url_for('redis_management') }}" class="btn btn-outline-warning me-2">
+                    <i class="fas fa-sync-alt me-2"></i>Aggiorna
+                </a>
+                <a href="{{ url_for('export_redis') }}" class="btn btn-outline-info" target="_blank">
+                    <i class="fas fa-download me-2"></i>Esporta JSON
+                </a>
+            </div>
+        </div>
+
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                        <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'check-circle' }} me-2"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Statistiche Redis
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <div class="stat-card p-3 rounded text-center">
+                                    <i class="fas fa-users text-warning fs-2"></i>
+                                    <h4 class="mt-2">{{ redis_stats.total_clients }}</h4>
+                                    <small class="text-muted">Clienti Totali</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card p-3 rounded text-center">
+                                    <i class="fas fa-user-check text-success fs-2"></i>
+                                    <h4 class="mt-2">{{ redis_stats.online_clients }}</h4>
+                                    <small class="text-muted">Clienti Online</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card p-3 rounded text-center">
+                                    <i class="fas fa-comments text-info fs-2"></i>
+                                    <h4 class="mt-2">{{ redis_stats.total_rooms }}</h4>
+                                    <small class="text-muted">Stanze Totali</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card p-3 rounded text-center">
+                                    <i class="fas fa-envelope text-primary fs-2"></i>
+                                    <h4 class="mt-2">{{ redis_stats.total_private_messages + redis_stats.total_room_messages }}</h4>
+                                    <small class="text-muted">Messaggi Totali</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-4">
+                                <div class="d-flex justify-content-between">
+                                    <span>Stanze Attive:</span>
+                                    <strong class="text-success">{{ redis_stats.active_rooms }}</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex justify-content-between">
+                                    <span>Messaggi Privati:</span>
+                                    <strong class="text-info">{{ redis_stats.total_private_messages }}</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex justify-content-between">
+                                    <span>Chiavi Database:</span>
+                                    <strong class="text-warning">{{ redis_stats.database_keys }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+
+            <div class="col-lg-8">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-eye me-2"></i>
+                            Dati Redis
+                        </h5>
+                    </div>
+                    <div class="card-body">
+
+                        <div class="mb-4">
+                            <h6 class="text-warning">
+                                <i class="fas fa-users me-2"></i>
+                                Clienti ({{ redis_data.clients|length }})
+                            </h6>
+                            {% if redis_data.clients %}
+                                <div class="json-viewer p-3">
+                                    <pre class="text-light mb-0"><code>{{ redis_data.clients | tojson(indent=2) }}</code></pre>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Nessun cliente registrato
+                                </div>
+                            {% endif %}
+                        </div>
+
+
+                        <div class="mb-4">
+                            <h6 class="text-info">
+                                <i class="fas fa-comments me-2"></i>
+                                Stanze ({{ redis_data.rooms|length }})
+                            </h6>
+                            {% if redis_data.rooms %}
+                                <div class="json-viewer p-3">
+                                    <pre class="text-light mb-0"><code>{{ redis_data.rooms | tojson(indent=2) }}</code></pre>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Nessuna stanza attiva
+                                </div>
+                            {% endif %}
+                        </div>
+
+
+                        <div class="mb-4">
+                            <h6 class="text-primary">
+                                <i class="fas fa-envelope me-2"></i>
+                                Messaggi Privati ({{ redis_data.private_messages|length }})
+                            </h6>
+                            {% if redis_data.private_messages %}
+                                <div class="json-viewer p-3">
+                                    <pre class="text-light mb-0"><code>{{ redis_data.private_messages | tojson(indent=2) }}</code></pre>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Nessun messaggio privato
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="col-lg-4">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-tools me-2"></i>
+                            Pannello di Controllo
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="danger-zone">
+                            <h6 class="text-danger mb-3">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Zona Pericolosa
+                            </h6>
+                            <p class="small text-muted mb-3">
+                                Le operazioni seguenti elimineranno permanentemente i dati. Procedi con cautela.
+                            </p>
+
+
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-danger-custom btn-sm w-100" data-action="all">
+                                    <i class="fas fa-trash-alt me-2"></i>
+                                    Pulisci Tutto
+                                    <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
+                                </button>
+                                <small class="text-muted d-block mt-1">Elimina tutti i dati dal database</small>
+                            </div>
+
+
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-outline-danger btn-sm w-100" data-action="clients">
+                                    <i class="fas fa-users me-2"></i>
+                                    Pulisci Clienti
+                                    <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
+                                </button>
+                                <small class="text-muted d-block mt-1">Elimina solo i dati dei clienti</small>
+                            </div>
+
+
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-outline-danger btn-sm w-100" data-action="rooms">
+                                    <i class="fas fa-comments me-2"></i>
+                                    Pulisci Stanze
+                                    <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
+                                </button>
+                                <small class="text-muted d-block mt-1">Elimina tutte le stanze e messaggi</small>
+                            </div>
+
+
+                            <div class="mb-0">
+                                <button type="button" class="btn btn-outline-danger btn-sm w-100" data-action="private_messages">
+                                    <i class="fas fa-envelope me-2"></i>
+                                    Pulisci Messaggi Privati
+                                    <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
+                                </button>
+                                <small class="text-muted d-block mt-1">Elimina solo i messaggi privati</small>
+                            </div>
+                        </div>
+
+
+                        <div class="mt-4">
+                            <h6 class="text-success mb-3">
+                                <i class="fas fa-bolt me-2"></i>
+                                Azioni Rapide
+                            </h6>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-outline-success btn-sm" onclick="location.reload()">
+                                    <i class="fas fa-sync-alt me-2"></i>
+                                    Aggiorna Dati
+                                </button>
+                                
+                                <a href="{{ url_for('export_redis') }}" class="btn btn-outline-info btn-sm" target="_blank">
+                                    <i class="fas fa-download me-2"></i>
+                                    Backup JSON
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark border-danger">
+                <div class="modal-header border-danger">
+                    <h5 class="modal-title text-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Conferma Operazione
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-warning mb-3">
+                        <i class="fas fa-warning me-2"></i>
+                        Sei sicuro di voler procedere con questa operazione?
+                    </p>
+                    <p id="confirmText" class="text-light"></p>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        <strong>Attenzione:</strong> Questa operazione non può essere annullata!
+                    </div>
+                </div>
+                <div class="modal-footer border-danger">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Annulla
+                    </button>
+                    <button type="button" class="btn btn-danger" id="confirmButton">
+                        <i class="fas fa-check me-2"></i>Conferma
+                        <span class="spinner-border spinner-border-sm ms-2 d-none" role="status"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            const confirmButton = document.getElementById('confirmButton');
+            const confirmText = document.getElementById('confirmText');
+            let currentAction = '';
+            
+            const actionTexts = {
+                'all': 'Questo eliminerà TUTTI i dati dal database Redis, inclusi clienti, stanze e messaggi.',
+                'clients': 'Questo eliminerà tutti i dati dei clienti registrati.',
+                'rooms': 'Questo eliminerà tutte le stanze e i relativi messaggi.',
+                'private_messages': 'Questo eliminerà tutti i messaggi privati.'
+            };
+
+
+            document.querySelectorAll('[data-action]').forEach(button => {
+                button.addEventListener('click', function() {
+                    currentAction = this.dataset.action;
+                    confirmText.textContent = actionTexts[currentAction];
+                    confirmModal.show();
+                });
+            });
+
+
+            confirmButton.addEventListener('click', function() {
+                if (!currentAction) return;
+                
+                const spinner = confirmButton.querySelector('.spinner-border');
+                const buttonText = confirmButton.querySelector('i').nextSibling;
+                
+
+                spinner.classList.remove('d-none');
+                confirmButton.disabled = true;
+                
+
+                const originalButton = document.querySelector(`[data-action="${currentAction}"]`);
+                const originalSpinner = originalButton.querySelector('.loading');
+                originalSpinner.classList.add('show');
+                originalButton.disabled = true;
+
+
+                const formData = new FormData();
+                formData.append('clear_type', currentAction);
+
+
+                fetch('{{ url_for("clear_redis") }}', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+
+                        alert('Errore: ' + data.message);
+                        
+
+                        spinner.classList.add('d-none');
+                        confirmButton.disabled = false;
+                        originalSpinner.classList.remove('show');
+                        originalButton.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Errore di rete: ' + error.message);
+                    
+    
+                    spinner.classList.add('d-none');
+                    confirmButton.disabled = false;
+                    originalSpinner.classList.remove('show');
+                    originalButton.disabled = false;
+                });
+
+                confirmModal.hide();
+            });
+        });
+    </script>
+</body>
+</html>

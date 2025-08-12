@@ -18,7 +18,7 @@ ENV/
 file-receiver/uploads/*
 
 
-
+firewall/firewall.log
 honeypot/log.txt
 file-receiver/log.txt
 
