@@ -276,15 +276,11 @@ docker exec -it <container-name> /bin/bash
 
 - [ ] **Protocol Extensions**
   - WebSocket support for real-time communication
-  - UDP protocol implementation
-  - Message queuing systems
-  - File transfer optimization
+  - UDP protocol implementation (?)
+  - File transfer implementantion
 
 - [ ] **Production Features**
-  - High availability and load balancing
-  - Horizontal scaling capabilities
   - Performance monitoring and optimization
-  - API rate limiting and throttling
-  - Comprehensive logging and auditing
+
 
 **⚠️ Security Notice**: This is a development/educational project. For production use, ensure proper security hardening, regular updates, and professional security review.
