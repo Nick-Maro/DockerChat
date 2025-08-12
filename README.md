@@ -1,4 +1,4 @@
-# Network Security Infrastructure Project
+[⚠️ Suspicious Content] # Network Security Infrastructure Project
 
 A comprehensive Docker-based network security infrastructure implementing multiple security layers and monitoring capabilities.
 
@@ -9,11 +9,10 @@ This project implements a complete network security infrastructure with the foll
 - **NGINX Reverse Proxy**: Load balances requests between two backend servers
 - **Backend Servers**: Two Python Flask servers (server1 & server2) handling requests
 - **Programmable Firewall**: Custom rule-based traffic filtering
-- **Honeypot**: Captures and logs suspicious traffic for analysis
 - **File Receiver**: Network service for secure file uploads
 - **Python Client**: Command-line tool for sending files and messages
 - **Dashboard**: Real-time network monitoring interface (in development)
-
+- **Web-client**: Web client for sending files and messages (in development)
 The system supports HTTP communication for text messages and uses Docker Compose for container orchestration with bridge networking.
 
 ## Prerequisites
@@ -21,7 +20,6 @@ The system supports HTTP communication for text messages and uses Docker Compose
 - **Docker**: >= 20.x
 - **Docker Compose**: >= 1.29.x  
 - **Python**: >= 3.8 (for manual client execution)
-- **SSL/TLS Certificates**: Optional, for HTTPS implementation
 
 ## Quick Start
 
@@ -49,7 +47,7 @@ docker compose ps
 
 ```bash
 # Test backend connectivity
-curl -X POST http://127.0.0.1:5000/command -H "Content-Type: application/json" -d "{\"command\":\"ciao\"}"
+curl -X POST http://127.0.0.1:5001/command -H "Content-Type: application/json" -d "{\"command\":\"ciao\"}"
 ```
 
 ## Container Architecture
@@ -63,7 +61,58 @@ curl -X POST http://127.0.0.1:5000/command -H "Content-Type: application/json" -
 | `file-receiver` | File upload service | - | Secure file handling |
 | `client` | Python sender script | - | Testing and communication |
 | `dashboard` | Monitoring interface | 8000 | System visualization |
-| `redis` | in-memory database | - | Database |
+| `redis` | in-memory database | 8081 | Database |
+
+## Client Commands Reference
+
+### Interactive Commands
+
+Once connected to the client interface, you can use the following commands:
+
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `j <room_name>` | room name (string) | Join (or create) a room |
+| `s <message>` | message (string) | Send message to the current room |
+| `p <client_id> <msg>` | client UUID + message | Send **private message** to a specific client (use full ID from `c` command) |
+| `r` | — | Read all messages from the current room |
+| `pm` | — | Read all **private messages** |
+| `l` | — | List all available rooms |
+| `c` | — | List all connected clients (with **full IDs**) |
+| `e` | — | Leave the current room |
+| `h` | — | Show help menu |
+| `q` | — | Quit the program |
+
+### Example Usage
+
+```bash
+# Join a room
+j general
+
+# Send a message to the room
+s Hello everyone!
+
+# Send a private message to a specific client
+p a1b2c3d4-e5f6-7890-abcd-ef1234567890 Private hello!
+
+# List all connected clients
+c
+
+# Read room messages
+r
+
+# Check private messages
+pm
+
+# List available rooms
+l
+
+# Leave current room
+e
+
+# Quit the application
+q
+```
+
 ## Using the Client
 
 ### Interactive Mode
@@ -75,7 +124,7 @@ python sender.py
 
 Follow the prompts:
 1. **Host**: Enter `localhost` (or remote IP)
-2. **Port**: Enter `5000` 
+2. **Port**: Enter `5001` 
 3. **Action**: Choose:
    - `f` - Send a file (provide full path)
    - `m` - Send a text message
@@ -85,10 +134,10 @@ Follow the prompts:
 
 ```python
 # Example: Send a message
-python sender.py --host localhost --port 5000 --message "Hello Server"
+python sender.py --host localhost --port 5001 --message "Hello Server"
 
 # Example: Send a file
-python sender.py --host localhost --port 5000 --file "/path/to/file.txt"
+python sender.py --host localhost --port 5001 --file "/path/to/file.txt"
 ```
 
 ## Configuration
@@ -98,14 +147,6 @@ python sender.py --host localhost --port 5000 --file "/path/to/file.txt"
 Rules are defined in `rules.json` and managed via:
 - `firewall.py` - Core filtering logic
 - `fwcli.py` - Command-line interface
-
-### Honeypot Configuration
-
-The honeypot automatically logs:
-- Connection attempts
-- Suspicious traffic patterns
-- Malicious payloads
-- Access attempts to non-existent resources
 
 ## Monitoring and Logs
 
@@ -164,58 +205,86 @@ docker compose up -d --scale server1=2 --scale server2=2
 docker exec -it <container-name> /bin/bash
 ```
 
-## Security Features
-
-### Traffic Filtering
-- Custom firewall rules
-- IP-based blocking/allowing
-- Rate limiting capabilities
-- Protocol-specific filtering
-
-### Monitoring
-- Real-time traffic analysis
-- Suspicious activity detection
-- Comprehensive logging
-- Performance metrics
-
-### Network Isolation
-- Docker bridge networking
-- Container-to-container communication
-- Controlled external access
-- Service discovery
-
 ## Development Roadmap
 
-- [ ]   **Database**
-- implement database for keys and encrypt before
+### Critical Issues & Code Quality
+- [ ] **Code Refactoring**
+  - Clean up codebase structure
+  - Improve code documentation
+  - Standardize coding conventions
+  - Remove redundant code
 
-- [ ] **TLS/SSL Integration**
-  - SSL certificate management
-  - HTTPS endpoint configuration  
-  - End-to-end encryption
+- [ ] **Client Bug Fixes**
+  - Fix ability to send messages without joining a room
+  - Resolve connection drops and stability issues
+  - Improve error handling and reconnection logic
+  - Add input validation and sanitization
 
-- [ ] **Enhanced Dashboard**
-  - Real-time monitoring interface
-  - Traffic visualization
-  - Alert management
-  - Performance analytics
+- [ ] **Internationalization**
+  - Translate all text content to English
+  - Standardize language across all components
+
+
+### User Interface & Experience
+- [ ] **Web Client Integration**
+  - Connect index.html web client to backend client
+  - Implement real-time web interface
+  - Add responsive design for mobile devices
+
+- [ ] **Dashboard Enhancement**
+  - Improve visual design and aesthetics for /firewall /logs /stats /health 
+  - Add modern UI components
+  - Enhance user experience with animations
+
+### Security & Cryptography
+- [ ] **End-to-End Encryption**
+  - Implement message encryption/decryption
+  - Generate RSA or AES key pairs for users
+  - Secure key exchange protocols
+  - Message integrity verification
+
+- [ ] **User Authentication System**
+  - Password-based user registration
+  - Private key encryption with user password
+  - Secure password hashing (bcrypt/scrypt)
+  - Session management and token authentication
+- [ ] **Database & Key Management**
+    - Use Redis for server synchronization and real-time messaging
+    - Add persistent database (SQLite/PostgreSQL) for encrypted key storage (?)
+    - Store encrypted private/public key pairs with password verification
+    - Implement database encryption at rest
+    - Setup backup and recovery strategies
+
+- [ ] **Network Security Hardening**
+  - Port security and access control
+  - Network segmentation and isolation
+  - Container security best practices
+  - TLS/SSL certificate management (?)
 
 - [ ] **Advanced Firewall**
-  - Advanced rule syntax
-  - Threat intelligence integration
-  - Automated response capabilities
+  - Enhanced rule-based filtering
+  - DDoS protection mechanisms
+  - Intrusion detection and prevention
+  - Real-time threat monitoring
+  - Automated security response
+
+### Infrastructure & Performance
+- [ ] **TLS/SSL Integration**
+  - HTTPS endpoint configuration
+  - SSL certificate automation
+  - Secure WebSocket connections
 
 - [ ] **Protocol Extensions**
-  - WebSocket support
+  - WebSocket support for real-time communication
   - UDP protocol implementation
   - Message queuing systems
+  - File transfer optimization
 
 - [ ] **Production Features**
-  - High availability setup
-  - Database integration
-  - User authentication
-  - API rate limiting
-
-
+  - High availability and load balancing
+  - Horizontal scaling capabilities
+  - Performance monitoring and optimization
+  - API rate limiting and throttling
+  - Comprehensive logging and auditing
 
 **⚠️ Security Notice**: This is a development/educational project. For production use, ensure proper security hardening, regular updates, and professional security review.
