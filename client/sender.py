@@ -223,7 +223,7 @@ def read_http_response(sock, show_output=True):
                 
                 if "private_messages" in response_data:
                     messages = response_data["private_messages"]
-                    print(f"[CLIENT] 💬 Found {len(messages)} private messages")
+                    print(f"[CLIENT] Found {len(messages)} private messages")
                     for i, msg in enumerate(messages):
                         timestamp = msg.get("timestamp", "unknown")[:19].replace('T', ' ')
                         direction = "📤" if msg.get("direction") == "sent" else "📥"

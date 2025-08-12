@@ -59,12 +59,11 @@ curl -X POST http://127.0.0.1:5000/command -H "Content-Type: application/json" -
 | `reverse-proxy` | NGINX load balancer | 8080 | Routes traffic to backends |
 | `server1` | Python Flask backend | 5000 | Primary application server |
 | `server2` | Python Flask backend | 5000 | Secondary application server |
-| `firewall` | Custom traffic filter | - | Rule-based traffic filtering |
-| `honeypot` | Security monitoring | - | Suspicious traffic capture |
+| `firewall` | Custom traffic filter | 5001 | Rule-based traffic filtering |
 | `file-receiver` | File upload service | - | Secure file handling |
 | `client` | Python sender script | - | Testing and communication |
-| `dashboard` | Monitoring interface | - | System visualization |
-
+| `dashboard` | Monitoring interface | 8000 | System visualization |
+| `redis` | in-memory database | - | Database |
 ## Using the Client
 
 ### Interactive Mode
