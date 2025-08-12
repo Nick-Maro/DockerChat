@@ -1,4 +1,4 @@
-[⚠️ Suspicious Content] # Network Security Infrastructure Project
+# Network Security Infrastructure Project
 
 A comprehensive Docker-based network security infrastructure implementing multiple security layers and monitoring capabilities.
 
