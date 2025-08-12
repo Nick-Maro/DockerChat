@@ -61,10 +61,10 @@ services:
 
 
   server1:
-    build: ./backend-servers/server1
+    build: ./backend-servers/server
     container_name: server1
     volumes:
-      - ./backend-servers/server1:/app
+      - ./backend-servers/server:/app
       - shared_logs:/app/shared_logs
     expose:
       - "5000"
@@ -88,10 +88,10 @@ services:
 
 
   server2:
-    build: ./backend-servers/server2
+    build: ./backend-servers/server
     container_name: server2
     volumes:
-      - ./backend-servers/server2:/app
+      - ./backend-servers/server:/app
       - shared_logs:/app/shared_logs
     expose:
       - "5000"
