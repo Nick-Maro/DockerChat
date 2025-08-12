@@ -91,12 +91,16 @@ def get_clients():
             return {}
     return local_clients
 
+
 def set_clients(clients):
     if redis_client:
         try:
             redis_client.set('clients', json.dumps(clients))
-        except:
-            pass
+        except Exception as e:
+            print(f"[ERROR] Failed to update Redis clients: {e}")
+    to_remove = set(local_clients.keys()) - set(clients.keys())
+    for client_id in to_remove:
+        del local_clients[client_id]
     local_clients.update(clients)
 
 def get_rooms():
@@ -456,7 +460,6 @@ def receive_http_command():
         
         if not client_id or client_id not in clients:
             return jsonify({"error": "Client non registrato"}), 400
-        
 
         clients[client_id]["last_seen"] = datetime.now().isoformat()
         set_clients(clients)
@@ -466,6 +469,26 @@ def receive_http_command():
             "message": "Heartbeat ricevuto",
             "client_status": "alive",
             "debug": debug_info
+        })
+    elif command == "disconnect":
+        clients = get_clients()
+        if not client_id or client_id not in clients:
+            return jsonify({"error": "Client non registrato"}), 400
+
+        rooms = get_rooms()
+        for room_id, room_data in rooms.items():
+            if client_id in room_data.get("clients", {}):
+                del room_data["clients"][client_id]
+                room_data["last_activity"] = datetime.now().isoformat()
+        set_rooms(rooms)
+
+        del clients[client_id]
+        set_clients(clients)
+
+        return jsonify({
+            "command": command,
+            "message": f"Client {client_id} disconnesso e rimosso",
+            "debug": {"client_id": client_id}
         })
     
     return jsonify({
