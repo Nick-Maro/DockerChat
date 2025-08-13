@@ -279,4 +279,4 @@ if __name__ == "__main__":
     print(f"File receiver log path: {FILE_RECEIVER_LOG_PATH}")
     print(f"Redis available: {REDIS_AVAILABLE}")
     
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=80, debug=True)
