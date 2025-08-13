@@ -1,18 +1,24 @@
 {
-  "name": "client",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "start": "node main.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "dependencies": {
-    "node-fetch": "^3"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.14.0"
+	"private": true,
+	"type": "module",
+	"author": "gkkconan",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview"
+	},
+	"dependencies": {
+		"preact": "^10.26.9",
+		"preact-iso": "^2.9.2"
+	},
+	"devDependencies": {
+		"@preact/preset-vite": "^2.10.2",
+		"eslint": "^9.33.0",
+		"eslint-config-preact": "^2.0.0",
+		"typescript": "^5.9.2",
+		"vite": "^7.0.4"
+	},
+	"eslintConfig": {
+		"extends": "preact"
+	}
 }

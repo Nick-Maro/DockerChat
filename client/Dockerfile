@@ -1,13 +1,15 @@
-# Build stage
-FROM node:20-alpine AS build
+# build client
+FROM node:20 AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
 
-# Serve stage
-FROM nginx:stable-alpine
-COPY --from=build /app/dist /usr/share/nginx/html
+# build serving with http-server
+FROM node:20-slim AS serve
+WORKDIR /app
+RUN npm install -g http-server
+COPY --from=build /app/dist/ /app
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["http-server", "-p", "80", "-c-1"]

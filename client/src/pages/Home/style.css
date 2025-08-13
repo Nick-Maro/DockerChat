@@ -1,26 +1,3 @@
-*{margin: 0; padding: 0; box-sizing: border-box; font-family: 'Clash Grotesk', sans-serif; color: black;}
-body{display: flex; flex-direction: row;}
-
-.center-flex{display: flex; align-items: center; justify-content: center;}
-.center-grid{display: grid; place-items: center;}
-.flex{display: flex;}
-.row{flex-direction: row;}
-.column{flex-direction: column;}
-
-button{
-    padding: 10px 16px;
-    border: none;
-    border-radius: 9px;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.01));
-}
-input{border: none; outline: none;}
-p{color: #FFFFFF40;}
-ul{list-style: none;}
-
-
-/**************************************************/
-
-
 #chats{
     width: 350px; height: 100dvh;
     background: #F8F8FA;
@@ -55,26 +32,26 @@ ul{list-style: none;}
 
 /*** MAIN SECTION ***/
 
-main{
+.home main{
     width: calc(100% - 350px);
     display: grid;
     grid-template-rows: auto 1fr auto;
 }
 
-main .header{
+.home main .header{
     justify-content: space-between;
     padding: 10px 25px;
     border-bottom: 1px solid #ddd;
     background: white;
 }
-main .header h2{font-weight: 500;}
-main .header img{border-radius: 50%;}
+.home main .header h2{font-weight: 500;}
+.home main .header img{border-radius: 50%;}
 
 
 
 /*** CHAT ***/
 
-main .chat{gap: 15px; padding: 15px;}
+.home main .chat{gap: 15px; padding: 15px;}
 
 .message{
     max-width: 80%;
