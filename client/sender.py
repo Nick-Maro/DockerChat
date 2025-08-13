@@ -361,7 +361,12 @@ def main():
                 
                 if command == 'q':
                     print("[CLIENT] Closing connection...")
+                    if send_command_http(sock, f"disconnect", private_key, host, port):
+                        response = read_http_response(sock)
+                        if not response:
+                            print("[ERROR] Client not removed from clients list")
                     heartbeat_active = False
+                    sock.close()
                     break
                 elif command == 'h':
                     show_help()
@@ -427,7 +432,12 @@ def main():
                     
             except KeyboardInterrupt:
                 print("\n[CLIENT] User interruption, closing...")
+                if send_command_http(sock, f"disconnect", private_key, host, port):
+                    response = read_http_response(sock)
+                    if not response:
+                        print("[ERROR] Client not removed from clients list")
                 heartbeat_active = False
+                sock.close()
                 break
             except Exception as e:
                 print(f"[ERROR] {e}")
