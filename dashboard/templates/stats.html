@@ -1,16 +1,234 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Statistiche - Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistics - Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../static/style.css">
 </head>
-<body class="bg-dark text-light">
-<div class="container mt-4">
-    <h2>Statistiche di Sicurezza</h2>
-    <ul>
-        <li><strong>Tentativi bloccati dal firewall:</strong> {{ blocked_attempts }}</li>
-    </ul>
-    <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Torna alla Home</a>
-</div>
-</body>
-</html>
+<body class="bg-dark-custom">
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex align-items-center mb-4">
+                    <i class="fas fa-chart-line icon-large me-3"></i>
+                    <h2 class="header-title mb-0">Security Statistics</h2>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card stat-card card-custom">
+                    <div class="card-body text-center">
+                        <i class="fas fa-ban fa-3x mb-3 text-danger"></i>
+                        <h3 class="text-warning">{{ blocked_attempts or 0 }}</h3>
+                        <p class="lead mb-0">Blocked Attempts</p>
+                        <small class="text-muted">From the Firewall</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card stat-card card-custom">
+                    <div class="card-body text-center">
+                        <i class="fas fa-eye fa-3x mb-3 text-info"></i>
+                        <h3 class="text-warning">{{ honeypot_attempts or 0 }}</h3>
+                        <p class="lead mb-0">Honeypot Attempts</p>
+                        <small class="text-muted">Detected</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card stat-card card-custom">
+                    <div class="card-body text-center">
+                        <i class="fas fa-file-upload fa-3x mb-3 text-success"></i>
+                        <h3 class="text-warning">{{ files_received or 0 }}</h3>
+                        <p class="lead mb-0">Files Received</p>
+                        <small class="text-muted">Total</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h4 class="mb-0">
+                            <i class="fas fa-shield-alt me-2"></i>
+                            Security Overview
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5 class="text-warning mb-3">System Status</h5>
+                                <ul class="list-unstyled">
+                                    <li class="mb-2">
+                                        <span class="badge bg-success me-2">
+                                            <i class="fas fa-circle"></i>
+                                        </span>
+                                        Firewall: Active
+                                    </li>
+                                    <li class="mb-2">
+                                        <span class="badge bg-success me-2">
+                                            <i class="fas fa-circle"></i>
+                                        </span>
+                                        Honeypot: Active
+                                    </li>
+                                    <li class="mb-2">
+                                        <span class="badge bg-success me-2">
+                                            <i class="fas fa-circle"></i>
+                                        </span>
+                                        File Receiver: Active
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h5 class="text-warning mb-3">Recent Activities</h5>
+                                <ul class="list-unstyled">
+                                    <li class="mb-2">
+                                        <i class="fas fa-clock me-2 text-muted"></i>
+                                        Last blocked attack: <span class="text-warning">{{ last_blocked or 'N/A' }}</span>
+                                    </li>
+                                    <li class="mb-2">
+                                        <i class="fas fa-clock me-2 text-muted"></i>
+                                        Last file received: <span class="text-warning">{{ last_file or 'N/A' }}</span>
+                                    </li>
+                                    <li class="mb-2">
+                                        <i class="fas fa-clock me-2 text-muted"></i>
+                                        System started: <span class="text-warning">{{ system_uptime or 'N/A' }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Top Blocked IPs
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="json-viewer p-3">
+                            {% if top_blocked_ips %}
+                                {% for ip, count in top_blocked_ips %}
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="font-monospace">{{ ip }}</span>
+                                    <span class="badge bg-danger">{{ count }}</span>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-muted mb-0">No blocked IPs</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-globe me-2"></i>
+                            Countries of Origin
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="json-viewer p-3">
+                            {% if countries_stats %}
+                                {% for country, count in countries_stats %}
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>{{ country }}</span>
+                                    <span class="badge bg-warning">{{ count }}</span>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-muted mb-0">No data available</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex gap-3">
+                                <button class="btn btn-primary" onclick="refreshStats()">
+                                    <i class="fas fa-sync-alt me-2"></i>
+                                    Refresh Statistics
+                                </button>
+                                
+                                <button class="btn btn-info" onclick="exportStats()">
+                                    <i class="fas fa-download me-2"></i>
+                                    Export Report
+                                </button>
+                                
+                                <button class="btn btn-warning" onclick="resetStats()">
+                                    <i class="fas fa-redo me-2"></i>
+                                    Reset Statistics
+                                </button>
+                            </div>
+                            
+                            <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                                <i class="fas fa-home me-2"></i>
+                                Back to Home
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function refreshStats() {
+            location.reload();
+        }
+        
+        function exportStats() {
+
+            alert('Feature to be implemented - Export statistics');
+        }
+        
+        function resetStats() {
+            if (confirm('Are you sure you want to reset all statistics? This action cannot be undone.')) {
+
+                alert('Feature to be implemented - Reset statistics');
+            }
+        }
+
+
+        setInterval(refreshStats, 60000);
+
+
+        function updateUptime() {
+            const uptimeElement = document.querySelector('.text-warning');
+            if (uptimeElement && uptimeElement.textContent === 'N/A') {
+                const now = new Date();
+                uptimeElement.textContent = now.toLocaleString();
+            }
+        }
+
+        updateUptime();

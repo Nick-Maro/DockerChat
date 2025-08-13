@@ -1,17 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firewall - Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../static/style.css">
 </head>
-<body class="bg-dark text-light">
-<div class="container mt-4">
-    <h2>Gestione Regole Firewall</h2>
-    <form method="post">
-        <textarea name="rules" class="form-control" rows="15">{{ rules }}</textarea>
-        <button class="btn btn-success mt-3">Aggiorna Regole</button>
-    </form>
-    <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Torna alla Home</a>
-</div>
+<body class="bg-dark-custom">
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-shield-alt icon-large me-3"></i>
+                        <h2 class="header-title mb-0">Firewall Rules Management</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info mb-4">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Edit the firewall rules. Changes will be applied immediately.
+                        </div>
+                        
+                        <form method="post">
+                            <div class="mb-3">
+                                <label for="rules" class="form-label">
+                                    <i class="fas fa-code me-2"></i>
+                                    Firewall Rules
+                                </label>
+                                <textarea 
+                                    name="rules" 
+                                    id="rules"
+                                    class="form-control json-viewer" 
+                                    rows="15" 
+                                    placeholder="Enter the firewall rules..."
+                                    style="font-family: 'Courier New', monospace; font-size: 14px;"
+                                >{{ rules }}</textarea>
+                            </div>
+                            
+                            <div class="d-flex gap-3">
+                                <button type="submit" class="btn btn-success btn-lg">
+                                    <i class="fas fa-save me-2"></i>
+                                    Update Rules
+                                </button>
+                                
+                                <button type="reset" class="btn btn-warning btn-lg">
+                                    <i class="fas fa-undo me-2"></i>
+                                    Reset
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="fas fa-clock me-1"></i>
+                                Last updated: <span id="lastUpdate">never</span>
+                            </small>
+                            
+                            <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                                <i class="fas fa-home me-2"></i>
+                                Back to Home
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.querySelector('form').addEventListener('submit', function() {
+            localStorage.setItem('firewall_last_update', new Date().toLocaleString());
+        });
+        
+        const lastUpdate = localStorage.getItem('firewall_last_update');
+        if (lastUpdate) {
+            document.getElementById('lastUpdate').textContent = lastUpdate;
+        }
+    </script>
 </body>
 </html>

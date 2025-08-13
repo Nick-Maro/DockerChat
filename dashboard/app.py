@@ -185,7 +185,7 @@ def debug():
         except Exception as e:
             debug_info["redis_error"] = str(e)
     
-    return jsonify(debug_info)
+    return render_template('debug.html', debug_info=debug_info)
 
 def get_redis_data():
     if not REDIS_AVAILABLE:
