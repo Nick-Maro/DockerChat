@@ -15,6 +15,7 @@ This project implements a complete network security infrastructure with the foll
 - **Web-client**: Web client for sending files and messages (in development)
 The system supports HTTP communication for text messages and uses Docker Compose for container orchestration with bridge networking.
 
+![Network Graph](Graph.png)
 ## Prerequisites
 
 - **Docker**: >= 20.x
