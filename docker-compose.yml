@@ -27,11 +27,9 @@ services:
       - "${FIREWALL_PORT}:${FIREWALL_PORT}"
     networks:
       - net
-    depends_on:
-      reverse-proxy:
-        condition: service_started
-      redis:
-        condition: service_healthy
+    # depends_on:
+      # redis:
+        # condition: service_healthy
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -45,12 +43,14 @@ services:
     container_name: reverse-proxy
     volumes:
       - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./client:/usr/share/nginx/html/client:ro
       - shared_logs:/var/log/nginx
     ports:
-      - "${REVERSE_PROXY_PORT}:8080"
+      - "${REVERSE_PROXY_PORT}:${REVERSE_PROXY_PORT}"
     networks:
       - net
     depends_on:
+      - client
       - server1
       - server2
     healthcheck:
@@ -58,6 +58,15 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+
+
+  client:
+    build: ./client
+    container_name: client
+    expose:
+      - "80"
+    networks:
+      - net
 
 
   server1:
@@ -131,21 +140,6 @@ services:
       - REDIS_PORT=6379
 
 
-  client:
-    build: ./client
-    container_name: client
-    volumes:
-      - ./client:/app
-    networks:
-      - net
-    depends_on:
-      - firewall
-    stdin_open: true
-    tty: true
-    profiles:
-      - client 
-
-
   dashboard:
     build: ./dashboard
     container_name: dashboard
@@ -168,8 +162,6 @@ services:
       - REDIS_PORT=6379
 
 
-
-
   redis-commander:
     image: rediscommander/redis-commander:latest
     container_name: redis-commander
@@ -186,6 +178,7 @@ services:
         condition: service_healthy
     profiles:
       - admin  # docker-compose --profile admin up
+
 
 volumes:
   shared_logs:
