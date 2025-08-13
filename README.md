@@ -232,10 +232,6 @@ docker exec -it <container-name> /bin/bash
   - Implement real-time web interface
   - Add responsive design for mobile devices
 
-- [ ] **Dashboard Enhancement**
-  - Improve visual design and aesthetics for /firewall /logs /stats /health 
-  - Add modern UI components
-  - Enhance user experience with animations
 
 ### Security & Cryptography
 - [ ] **End-to-End Encryption**
@@ -249,12 +245,7 @@ docker exec -it <container-name> /bin/bash
   - Private key encryption with user password
   - Secure password hashing (bcrypt/scrypt)
   - Session management and token authentication
-- [ ] **Database & Key Management**
-    - Use Redis for server synchronization and real-time messaging
-    - Add persistent database (SQLite/PostgreSQL) for encrypted key storage (?)
-    - Store encrypted private/public key pairs with password verification
-    - Implement database encryption at rest
-    - Setup backup and recovery strategies
+
 
 - [ ] **Network Security Hardening**
   - Port security and access control
