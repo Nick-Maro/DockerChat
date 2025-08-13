@@ -68,6 +68,20 @@ services:
     networks:
       - net
 
+  client_terminal:
+    build: ./client_terminal
+    container_name: client_terminal
+    volumes:
+      - ./client_terminal:/app
+    networks:
+      - net
+    depends_on:
+      - firewall
+    stdin_open: true
+    tty: true
+    profiles:
+      - client_terminal
+
 
   server1:
     build: ./backend-servers/server
