@@ -49,7 +49,7 @@ def send_public_key(sock, public_key, host, port):
         "public_key": public_pem.decode('utf-8'),
         "client_id": client_id
     })
-    http_request = f"""POST /dashboard/command HTTP/1.1\r
+    http_request = f"""POST /api/command HTTP/1.1\r
 Host: {host}:{port}\r
 Content-Type: application/json\r
 Content-Length: {len(body.encode())}\r
@@ -97,7 +97,7 @@ def send_command_http(sock, command, private_key, host, port, extra_data=None):
         
         body = json.dumps(body_data)
         
-        http_request = f"""POST /dashboard/command HTTP/1.1\r
+        http_request = f"""POST /api/command HTTP/1.1\r
 Host: {host}:{port}\r
 Content-Type: application/json\r
 Content-Length: {len(body.encode())}\r
