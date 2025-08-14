@@ -6,6 +6,7 @@ import threading
 import os
 import time
 from dotenv import load_dotenv
+from requests import JSONDecodeError
 
 load_dotenv()
 
@@ -30,13 +31,16 @@ _connection_attempts = {}
 
 try:
     import logger as external_logger
-    def log(msg):
+except ImportError:
+    external_logger = None
+
+def log(msg):
+    if external_logger is not None:
         try:
             external_logger.log(msg)
-        except Exception:
-            print(msg)
-except Exception:
-    def log(msg):
+        except Exception as e:
+            print(f"Failed to log: {e}")
+    else:
         print(msg)
 
 def _default_rules():
@@ -52,7 +56,7 @@ def load_rules_from_file():
     try:
         with open(RULES_FILE, "r") as f:
             data = json.load(f)
-    except Exception:
+    except JSONDecodeError:
         data = _default_rules()
 
    
@@ -72,7 +76,7 @@ def load_rules_from_file():
         if "allowed_ports" in data:
             try:
                 normalized["allowed_ports"] = [int(p) for p in data.get("allowed_ports") or []]
-            except Exception:
+            except (ValueError, TypeError):
                 normalized["allowed_ports"] = normalized["allowed_ports"]
 
         
@@ -81,7 +85,7 @@ def load_rules_from_file():
                 v = int(data.get("max_attempts_per_minute"))
                 if v > 0:
                     normalized["max_attempts_per_minute"] = v
-            except Exception:
+            except ValueError:
                 pass
 
     return normalized
@@ -91,7 +95,7 @@ def reload_rules_if_changed():
     global _rules, _rules_mtime
     try:
         mtime = os.path.getmtime(RULES_FILE)
-    except Exception:
+    except (FileNotFoundError, OSError):
         mtime = 0.0
 
     if _rules is None or mtime != _rules_mtime:
@@ -107,10 +111,7 @@ def reload_rules_if_changed():
 def rules_watcher():
    
     while True:
-        try:
-            reload_rules_if_changed()
-        except Exception:
-            pass
+        reload_rules_if_changed()
         time.sleep(RULES_RELOAD_INTERVAL)
 
 def get_rules():
@@ -155,16 +156,16 @@ def forward_data(src, dst):
             if not data:
                 break
             dst.sendall(data)
-    except Exception:
+    except (OSError, ConnectionResetError, TimeoutError):
         pass
     finally:
         try:
             src.shutdown(socket.SHUT_RD)
-        except Exception:
+        except (OSError, ConnectionResetError, TimeoutError):
             pass
         try:
             dst.shutdown(socket.SHUT_WR)
-        except Exception:
+        except (OSError, ConnectionResetError, TimeoutError):
             pass
 
 def handle_client(client_sock, client_addr):
@@ -182,7 +183,7 @@ def handle_client(client_sock, client_addr):
         log(f"[BLOCKED] Connection from {ip} blocked by config.")
         try:
             client_sock.close()
-        except Exception:
+        except OSError:
             pass
         return
 
@@ -191,7 +192,7 @@ def handle_client(client_sock, client_addr):
         log(f"[BLOCKED] Destination port {REVERSE_PROXY_PORT} not allowed by rules. Rejecting {ip}.")
         try:
             client_sock.close()
-        except Exception:
+        except OSError:
             pass
         return
 
@@ -200,7 +201,7 @@ def handle_client(client_sock, client_addr):
         log(f"[BLOCKED - RATE LIMIT] {ip} exceeded {rules.get('max_attempts_per_minute')} attempts/min.")
         try:
             client_sock.close()
-        except Exception:
+        except OSError:
             pass
         return
 
@@ -216,7 +217,7 @@ def handle_client(client_sock, client_addr):
         log(f"[ERROR] Cannot connect to reverse proxy {REVERSE_PROXY_IP}:{REVERSE_PROXY_PORT} - {e}")
         try:
             client_sock.close()
-        except Exception:
+        except OSError:
             pass
         return
 
@@ -231,11 +232,11 @@ def handle_client(client_sock, client_addr):
     t2.join()
     try:
         client_sock.close()
-    except Exception:
+    except OSError:
         pass
     try:
         proxy_sock.close()
-    except Exception:
+    except OSError:
         pass
     log(f"[CLOSED] Connection {ip}")
 
@@ -271,7 +272,7 @@ def main():
     finally:
         try:
             sock.close()
-        except Exception:
+        except OSError:
             pass
 
 if __name__ == "__main__":
