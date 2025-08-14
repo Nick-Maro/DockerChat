@@ -24,7 +24,7 @@ export function Home() {
 					</li>
 					<li>
 						<img src="https://placehold.co/50x50/845B92/FFF?text=E" alt="pfp" />
-						<h3> Aiden Pierce </h3>
+						<h3> Aiden Pearce </h3>
 					</li>
 					<li>
 						<img src="https://placehold.co/50x50/845B92/FFF?text=C" alt="pfp" />
