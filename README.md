@@ -223,7 +223,7 @@ docker exec -it <container-name> /bin/bash
   - Improve error handling and reconnection logic
   - Add input validation and sanitization
 
-- [ ] **Internationalization**
+- [X] **Internationalization**
   - Translate all text content to English
   - Standardize language across all components
 
@@ -240,11 +240,7 @@ docker exec -it <container-name> /bin/bash
   - Private group encryption and security
 
 ### Communication & Media
-- [ ] **Voice Communication**
-  - Implement UDP-based voice transmission
-  - Real-time audio streaming capabilities
-  - Voice chat rooms and private calls
-  - Audio codec optimization for low latency
+
 
 - [ ] **File Transfer Implementation**
   - Enhanced file sharing within groups
@@ -287,7 +283,6 @@ docker exec -it <container-name> /bin/bash
 - [ ] **Protocol Extensions**
   - WebSocket support for real-time communication
   - UDP protocol implementation for voice and real-time data
-  - file trasfer implementation 
 
 - [ ] **Logging & Monitoring**
   - Implement log rotation for NGINX
