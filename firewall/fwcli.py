@@ -1,4 +1,5 @@
 import json
+from json import JSONDecodeError
 import argparse
 
 RULES_FILE = "rules.json"
@@ -7,7 +8,7 @@ def load_rules():
     try:
         with open(RULES_FILE, 'r') as f:
             return json.load(f)
-    except:
+    except JSONDecodeError:
         return {
             "blocked_ips": [],
             "allowed_ports": [80, 443],
