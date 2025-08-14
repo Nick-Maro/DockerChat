@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, f
 import json
 import os
 import redis
+from redis.exceptions import RedisError
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -16,8 +17,8 @@ try:
     redis_client.ping()
     REDIS_AVAILABLE = True
     print("Connected to Redis")
-except:
-    print("Redis not available")
+except RedisError as a:
+    print(f"Redis not available:\n{a}")
     redis_client = None
     REDIS_AVAILABLE = False
 
@@ -153,7 +154,7 @@ def health():
         try:
             redis_client.ping()
             health_status["redis_status"] = "connected"
-        except:
+        except RedisError:
             health_status["redis_status"] = "disconnected"
             health_status["status"] = "degraded"
     
@@ -177,11 +178,11 @@ def debug():
         ("file_receiver_log", FILE_RECEIVER_LOG_PATH)
     ]:
         debug_info[f"{path_name}_readable"] = os.access(path, os.R_OK) if os.path.exists(path) else False
-        debug_info[f"{path_name}_size"] = os.path.getsize(path) if os.path.exists(path) else 0
+        debug_info[f"{path_name}_size"] = str(os.path.getsize(path) if os.path.exists(path) else 0)
     
     if REDIS_AVAILABLE:
         try:
-            debug_info["redis_info"] = get_redis_stats()
+            debug_info["redis_info"] = str(get_redis_stats())
         except Exception as e:
             debug_info["redis_error"] = str(e)
     
@@ -190,28 +191,19 @@ def debug():
 def get_redis_data():
     if not REDIS_AVAILABLE:
         return {}
-    
-    data = {}
-    
-    try:
-        clients_data = redis_client.get('clients')
-        data['clients'] = json.loads(clients_data) if clients_data else {}
-    except:
-        data['clients'] = {}
-    
-    try:
-        rooms_data = redis_client.get('rooms')
-        data['rooms'] = json.loads(rooms_data) if rooms_data else {}
-    except:
-        data['rooms'] = {}
-    
-    try:
-        private_data = redis_client.get('private_messages')
-        data['private_messages'] = json.loads(private_data) if private_data else {}
-    except:
-        data['private_messages'] = {}
-    
-    return data
+
+    def fetch_json(key):
+        try:
+            raw = redis_client.get(key)
+            return json.loads(raw) if raw else {}
+        except (RedisError, json.JSONDecodeError):
+            return {}
+
+    return {
+        'clients': fetch_json('clients'),
+        'rooms': fetch_json('rooms'),
+        'private_messages': fetch_json('private_messages'),
+    }
 
 def get_redis_stats():
     if not REDIS_AVAILABLE:
@@ -239,7 +231,7 @@ def get_redis_stats():
                 last_seen = datetime.fromisoformat(client_data['last_seen'])
                 if datetime.now() - last_seen <= timedelta(hours=1):
                     online_clients += 1
-            except:
+            except (KeyError, ValueError):
                 pass
     
     return {

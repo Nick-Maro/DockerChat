@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestione Redis - Dashboard Sicurezza</title>
+    <title>Redis Management - Security Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../static/style.css">
@@ -15,21 +15,21 @@
             <div>
                 <h1 class="header-title">
                     <i class="fas fa-database me-3"></i>
-                    Gestione Redis
+                    Redis Management
                 </h1>
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-warning">Dashboard</a></li>
-                        <li class="breadcrumb-item active text-light">Gestione Redis</li>
+                        <li class="breadcrumb-item active text-light">Redis Management</li>
                     </ol>
                 </nav>
             </div>
             <div>
                 <a href="{{ url_for('redis_management') }}" class="btn btn-outline-warning me-2">
-                    <i class="fas fa-sync-alt me-2"></i>Aggiorna
+                    <i class="fas fa-sync-alt me-2"></i>Update
                 </a>
                 <a href="{{ url_for('export_redis') }}" class="btn btn-outline-info" target="_blank">
-                    <i class="fas fa-download me-2"></i>Esporta JSON
+                    <i class="fas fa-download me-2"></i>Export JSON
                 </a>
             </div>
         </div>
@@ -54,7 +54,7 @@
                     <div class="card-header">
                         <h5 class="mb-0">
                             <i class="fas fa-chart-bar me-2"></i>
-                            Statistiche Redis
+                            Redis statistics
                         </h5>
                     </div>
                     <div class="card-body">
@@ -63,28 +63,28 @@
                                 <div class="stat-card p-3 rounded text-center">
                                     <i class="fas fa-users text-warning fs-2"></i>
                                     <h4 class="mt-2">{{ redis_stats.total_clients }}</h4>
-                                    <small class="text-muted">Clienti Totali</small>
+                                    <small class="text-muted">Total Clients</small>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="stat-card p-3 rounded text-center">
                                     <i class="fas fa-user-check text-success fs-2"></i>
                                     <h4 class="mt-2">{{ redis_stats.online_clients }}</h4>
-                                    <small class="text-muted">Clienti Online</small>
+                                    <small class="text-muted">Online Clients</small>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="stat-card p-3 rounded text-center">
                                     <i class="fas fa-comments text-info fs-2"></i>
                                     <h4 class="mt-2">{{ redis_stats.total_rooms }}</h4>
-                                    <small class="text-muted">Stanze Totali</small>
+                                    <small class="text-muted">Total Rooms</small>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="stat-card p-3 rounded text-center">
                                     <i class="fas fa-envelope text-primary fs-2"></i>
                                     <h4 class="mt-2">{{ redis_stats.total_private_messages + redis_stats.total_room_messages }}</h4>
-                                    <small class="text-muted">Messaggi Totali</small>
+                                    <small class="text-muted">Total Messages</small>
                                 </div>
                             </div>
                         </div>
@@ -92,19 +92,19 @@
                         <div class="row mt-3">
                             <div class="col-md-4">
                                 <div class="d-flex justify-content-between">
-                                    <span>Stanze Attive:</span>
+                                    <span>Active Rooms:</span>
                                     <strong class="text-success">{{ redis_stats.active_rooms }}</strong>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="d-flex justify-content-between">
-                                    <span>Messaggi Privati:</span>
+                                    <span>Private Messages:</span>
                                     <strong class="text-info">{{ redis_stats.total_private_messages }}</strong>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="d-flex justify-content-between">
-                                    <span>Chiavi Database:</span>
+                                    <span>Database Keys:</span>
                                     <strong class="text-warning">{{ redis_stats.database_keys }}</strong>
                                 </div>
                             </div>
@@ -121,7 +121,7 @@
                     <div class="card-header">
                         <h5 class="mb-0">
                             <i class="fas fa-eye me-2"></i>
-                            Dati Redis
+                            Redis Data
                         </h5>
                     </div>
                     <div class="card-body">
@@ -129,7 +129,7 @@
                         <div class="mb-4">
                             <h6 class="text-warning">
                                 <i class="fas fa-users me-2"></i>
-                                Clienti ({{ redis_data.clients|length }})
+                                Clients ({{ redis_data.clients|length }})
                             </h6>
                             {% if redis_data.clients %}
                                 <div class="json-viewer p-3">
@@ -138,7 +138,7 @@
                             {% else %}
                                 <div class="alert alert-info">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Nessun cliente registrato
+                                    No Client Registered
                                 </div>
                             {% endif %}
                         </div>
@@ -147,7 +147,7 @@
                         <div class="mb-4">
                             <h6 class="text-info">
                                 <i class="fas fa-comments me-2"></i>
-                                Stanze ({{ redis_data.rooms|length }})
+                                Rooms ({{ redis_data.rooms|length }})
                             </h6>
                             {% if redis_data.rooms %}
                                 <div class="json-viewer p-3">
@@ -156,7 +156,7 @@
                             {% else %}
                                 <div class="alert alert-info">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Nessuna stanza attiva
+                                    No room active
                                 </div>
                             {% endif %}
                         </div>
@@ -165,7 +165,7 @@
                         <div class="mb-4">
                             <h6 class="text-primary">
                                 <i class="fas fa-envelope me-2"></i>
-                                Messaggi Privati ({{ redis_data.private_messages|length }})
+                                Private messages ({{ redis_data.private_messages|length }})
                             </h6>
                             {% if redis_data.private_messages %}
                                 <div class="json-viewer p-3">
@@ -174,7 +174,7 @@
                             {% else %}
                                 <div class="alert alert-info">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Nessun messaggio privato
+                                    No private messages
                                 </div>
                             {% endif %}
                         </div>
@@ -188,57 +188,57 @@
                     <div class="card-header">
                         <h5 class="mb-0">
                             <i class="fas fa-tools me-2"></i>
-                            Pannello di Controllo
+                            Control Panel
                         </h5>
                     </div>
                     <div class="card-body">
                         <div class="danger-zone">
                             <h6 class="text-danger mb-3">
                                 <i class="fas fa-exclamation-triangle me-2"></i>
-                                Zona Pericolosa
+                                Danger Zone
                             </h6>
                             <p class="small text-muted mb-3">
-                                Le operazioni seguenti elimineranno permanentemente i dati. Procedi con cautela.
+                                The following operations will permanently delete data. Proceed with caution.
                             </p>
 
 
                             <div class="mb-3">
                                 <button type="button" class="btn btn-danger-custom btn-sm w-100" data-action="all">
                                     <i class="fas fa-trash-alt me-2"></i>
-                                    Pulisci Tutto
+                                    Clean Everything
                                     <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
                                 </button>
-                                <small class="text-muted d-block mt-1">Elimina tutti i dati dal database</small>
+                                <small class="text-muted d-block mt-1">Delete all data from the database</small>
                             </div>
 
 
                             <div class="mb-3">
                                 <button type="button" class="btn btn-outline-danger btn-sm w-100" data-action="clients">
                                     <i class="fas fa-users me-2"></i>
-                                    Pulisci Clienti
+                                    Clean Clients
                                     <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
                                 </button>
-                                <small class="text-muted d-block mt-1">Elimina solo i dati dei clienti</small>
+                                <small class="text-muted d-block mt-1">Delete Clients data only</small>
                             </div>
 
 
                             <div class="mb-3">
                                 <button type="button" class="btn btn-outline-danger btn-sm w-100" data-action="rooms">
                                     <i class="fas fa-comments me-2"></i>
-                                    Pulisci Stanze
+                                    Clean Rooms
                                     <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
                                 </button>
-                                <small class="text-muted d-block mt-1">Elimina tutte le stanze e messaggi</small>
+                                <small class="text-muted d-block mt-1">Delete all rooms and messages</small>
                             </div>
 
 
                             <div class="mb-0">
                                 <button type="button" class="btn btn-outline-danger btn-sm w-100" data-action="private_messages">
                                     <i class="fas fa-envelope me-2"></i>
-                                    Pulisci Messaggi Privati
+                                    Clean Private Messages
                                     <span class="loading spinner-border spinner-border-sm ms-2" role="status"></span>
                                 </button>
-                                <small class="text-muted d-block mt-1">Elimina solo i messaggi privati</small>
+                                <small class="text-muted d-block mt-1">Delete private messages only</small>
                             </div>
                         </div>
 
@@ -246,13 +246,13 @@
                         <div class="mt-4">
                             <h6 class="text-success mb-3">
                                 <i class="fas fa-bolt me-2"></i>
-                                Azioni Rapide
+                                Quick Actions
                             </h6>
                             
                             <div class="d-grid gap-2">
                                 <button type="button" class="btn btn-outline-success btn-sm" onclick="location.reload()">
                                     <i class="fas fa-sync-alt me-2"></i>
-                                    Aggiorna Dati
+                                    Update data
                                 </button>
                                 
                                 <a href="{{ url_for('export_redis') }}" class="btn btn-outline-info btn-sm" target="_blank">
@@ -274,27 +274,27 @@
                 <div class="modal-header border-danger">
                     <h5 class="modal-title text-danger">
                         <i class="fas fa-exclamation-triangle me-2"></i>
-                        Conferma Operazione
+                        Confirm Operation
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <p class="text-warning mb-3">
                         <i class="fas fa-warning me-2"></i>
-                        Sei sicuro di voler procedere con questa operazione?
+                        Are you sure you want to proceed with this operation?
                     </p>
                     <p id="confirmText" class="text-light"></p>
                     <div class="alert alert-danger">
                         <i class="fas fa-exclamation-circle me-2"></i>
-                        <strong>Attenzione:</strong> Questa operazione non può essere annullata!
+                        <strong>Warning:</strong> This operation cannot be undone!
                     </div>
                 </div>
                 <div class="modal-footer border-danger">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-2"></i>Annulla
+                        <i class="fas fa-times me-2"></i>Cancel
                     </button>
                     <button type="button" class="btn btn-danger" id="confirmButton">
-                        <i class="fas fa-check me-2"></i>Conferma
+                        <i class="fas fa-check me-2"></i>Confirm
                         <span class="spinner-border spinner-border-sm ms-2 d-none" role="status"></span>
                     </button>
                 </div>
@@ -312,10 +312,10 @@
             let currentAction = '';
             
             const actionTexts = {
-                'all': 'Questo eliminerà TUTTI i dati dal database Redis, inclusi clienti, stanze e messaggi.',
-                'clients': 'Questo eliminerà tutti i dati dei clienti registrati.',
-                'rooms': 'Questo eliminerà tutte le stanze e i relativi messaggi.',
-                'private_messages': 'Questo eliminerà tutti i messaggi privati.'
+                'all': 'This will delete ALL data from the Redis database, including customers, rooms, and messages.',
+                'clients': 'This will delete all registered customer data.',
+                'rooms': 'This will delete all rooms and related messages.',
+                'private_messages': 'This will delete all private messages.'
             };
 
 
