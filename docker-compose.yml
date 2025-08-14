@@ -18,7 +18,9 @@ services:
 
 
   firewall:
-    build: ./firewall
+    build:
+      context: ./firewall
+      dockerfile: Dockerfile
     container_name: firewall
     volumes:
       - ./firewall:/app
@@ -39,7 +41,9 @@ services:
 
 
   reverse-proxy:
-    build: ./reverse-proxy
+    build:
+      context: ./reverse-proxy/
+      dockerfile: Dockerfile
     container_name: reverse-proxy
     volumes:
       - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -61,7 +65,9 @@ services:
 
 
   client:
-    build: ./client
+    build:
+      context: ./client/
+      dockerfile: Dockerfile
     container_name: client
     expose:
       - "80"
@@ -69,7 +75,9 @@ services:
       - net
 
   client_terminal:
-    build: ./client_terminal
+    build:
+      context: ./client_terminal/
+      dockerfile: Dockerfile
     container_name: client_terminal
     volumes:
       - ./client_terminal:/app
@@ -83,7 +91,9 @@ services:
       - client_terminal
 
   server1:
-    build: ./backend-servers/server
+    build: 
+      context: ./backend-servers/server/
+      dockerfile: Dockerfile
     container_name: server1
     volumes:
       - ./backend-servers/server:/app
@@ -110,7 +120,9 @@ services:
       retries: 3
 
   server2:
-    build: ./backend-servers/server
+    build:
+      context: ./backend-servers/server/
+      dockerfile: Dockerfile
     container_name: server2
     volumes:
       - ./backend-servers/server:/app
@@ -137,7 +149,9 @@ services:
       retries: 3
 
   file-receiver:
-    build: ./file-receiver
+    build:
+      context: ./file-receiver/
+      dockerfile: Dockerfile
     container_name: file-receiver
     volumes:
       - ./file-receiver:/app
@@ -154,7 +168,9 @@ services:
 
 
   dashboard:
-    build: ./dashboard
+    build:
+      context: ./dashboard/
+      dockerfile: Dockerfile
     container_name: dashboard
     volumes:
       - ./dashboard:/app

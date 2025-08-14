@@ -1,8 +1,9 @@
-FROM jarredsumner/bun:edge
-
+FROM oven/bun:latest
 WORKDIR /app
-COPY . .
 
+COPY package.json bun.lock ./
 RUN bun install
+
+COPY . .
 
 CMD ["bun", "run", "index.ts"]
