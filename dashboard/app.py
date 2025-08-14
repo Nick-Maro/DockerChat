@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, f
 import json
 import os
 import redis
+from redis.exceptions import RedisError
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -190,28 +191,19 @@ def debug():
 def get_redis_data():
     if not REDIS_AVAILABLE:
         return {}
-    
-    data = {}
-    
-    try:
-        clients_data = redis_client.get('clients')
-        data['clients'] = json.loads(clients_data) if clients_data else {}
-    except:
-        data['clients'] = {}
-    
-    try:
-        rooms_data = redis_client.get('rooms')
-        data['rooms'] = json.loads(rooms_data) if rooms_data else {}
-    except:
-        data['rooms'] = {}
-    
-    try:
-        private_data = redis_client.get('private_messages')
-        data['private_messages'] = json.loads(private_data) if private_data else {}
-    except:
-        data['private_messages'] = {}
-    
-    return data
+
+    def fetch_json(key):
+        try:
+            raw = redis_client.get(key)
+            return json.loads(raw) if raw else {}
+        except (RedisError, json.JSONDecodeError):
+            return {}
+
+    return {
+        'clients': fetch_json('clients'),
+        'rooms': fetch_json('rooms'),
+        'private_messages': fetch_json('private_messages'),
+    }
 
 def get_redis_stats():
     if not REDIS_AVAILABLE:

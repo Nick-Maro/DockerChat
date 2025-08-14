@@ -3,7 +3,6 @@ import uuid
 import json
 import redis
 from datetime import datetime, timedelta
-import time
 
 app = Flask(__name__)
 
@@ -15,9 +14,9 @@ MESSAGE_TTL = 86400  # 24 hours
 try:
     redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
     redis_client.ping()
-    print("Connesso a Redis")
+    print("Connected to Redis")
 except:
-    print("Redis non disponibile, uso storage locale")
+    print("Redis unavailable, use local storage")
     redis_client = None
 
 local_rooms = {}
@@ -219,7 +218,7 @@ def receive_http_command():
         
         return jsonify({
             "command": command,
-            "message": "Client registrato con successo!",
+            "message": "Client registered with success!",
             "client_id": client_id,
             "status": "registered",
             "ttl_info": {
@@ -234,7 +233,7 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
 
         clients[client_id]["room_id"] = room_name
         clients[client_id]["last_seen"] = datetime.now().isoformat()
@@ -248,7 +247,7 @@ def receive_http_command():
         rooms = get_rooms()
         return jsonify({
             "command": command,
-            "message": f"Entrato nella stanza '{room_name}'",
+            "message": f"Joined room '{room_name}'",
             "room_name": room_name,
             "clients_in_room": len(rooms.get(room_name, {}).get("clients", {})),
             "debug": debug_info
@@ -260,14 +259,14 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
         
         clients[client_id]["last_seen"] = datetime.now().isoformat()
         set_clients(clients)
         
         room_id = clients[client_id]["room_id"]
         if not room_id:
-            return jsonify({"error": "Non sei in nessuna stanza"}), 400
+            return jsonify({"error": "You aren't connected to any room"}), 400
         
         message = {
             "from_client": client_id,
@@ -280,7 +279,7 @@ def receive_http_command():
         
         return jsonify({
             "command": command,
-            "message": f"Messaggio inviato nella stanza '{room_id}'",
+            "message": f"Message sent in room '{room_id}'",
             "room_name": room_id,
             "message_text": message_text,
             "debug": debug_info
@@ -290,7 +289,7 @@ def receive_http_command():
         
         parts = command.split(":", 2)
         if len(parts) != 3:
-            return jsonify({"error": "Formato comando: send_private:CLIENT_ID:MESSAGGIO"}), 400
+            return jsonify({"error": "Command format: send_private:CLIENT_ID:MESSAGE"}), 400
         
         to_client_id = parts[1]
         message_text = parts[2]
@@ -298,10 +297,10 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
         
         if to_client_id not in clients:
-            return jsonify({"error": "Client destinatario non trovato"}), 400
+            return jsonify({"error": "Recipient Client not found"}), 400
         
         
         clients[client_id]["last_seen"] = datetime.now().isoformat()
@@ -311,7 +310,7 @@ def receive_http_command():
         
         return jsonify({
             "command": command,
-            "message": f"Messaggio privato inviato a {to_client_id}",
+            "message": f"Private message sent to {to_client_id}",
             "message_id": message_id,
             "to_client": to_client_id,
             "debug": debug_info
@@ -321,7 +320,7 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
         
        
         clients[client_id]["last_seen"] = datetime.now().isoformat()
@@ -363,7 +362,7 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
         
         
         clients[client_id]["last_seen"] = datetime.now().isoformat()
@@ -371,7 +370,7 @@ def receive_http_command():
         
         room_id = clients[client_id]["room_id"]
         if not room_id:
-            return jsonify({"error": "Non sei in nessuna stanza"}), 400
+            return jsonify({"error": "You're not in any room"}), 400
         
         rooms = get_rooms()
         messages = rooms.get(room_id, {}).get("messages", [])
@@ -388,7 +387,7 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
         
     
         clients[client_id]["last_seen"] = datetime.now().isoformat()
@@ -406,7 +405,7 @@ def receive_http_command():
         
         return jsonify({
             "command": command,
-            "message": "Lista client disponibili",
+            "message": "List of available clients",
             "clients": client_list,
             "total_clients": len(client_list),
             "debug": debug_info
@@ -426,7 +425,7 @@ def receive_http_command():
         
         return jsonify({
             "command": command,
-            "message": "Lista stanze disponibili",
+            "message": "List of available rooms",
             "rooms": room_list,
             "debug": debug_info
         })
@@ -435,7 +434,7 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
         
         room_id = clients[client_id]["room_id"]
         if room_id:
@@ -451,7 +450,7 @@ def receive_http_command():
             
             return jsonify({
                 "command": command,
-                "message": f"Uscito dalla stanza '{room_id}'",
+                "message": f"Left the room '{room_id}'",
                 "debug": debug_info
             })
     
@@ -459,21 +458,21 @@ def receive_http_command():
         clients = get_clients()
         
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
 
         clients[client_id]["last_seen"] = datetime.now().isoformat()
         set_clients(clients)
         
         return jsonify({
             "command": command,
-            "message": "Heartbeat ricevuto",
+            "message": "Heartbeat received",
             "client_status": "alive",
             "debug": debug_info
         })
     elif command == "disconnect":
         clients = get_clients()
         if not client_id or client_id not in clients:
-            return jsonify({"error": "Client non registrato"}), 400
+            return jsonify({"error": "Unregistered client"}), 400
 
         rooms = get_rooms()
         for room_id, room_data in rooms.items():
@@ -487,18 +486,18 @@ def receive_http_command():
 
         return jsonify({
             "command": command,
-            "message": f"Client {client_id} disconnesso e rimosso",
+            "message": f"Client {client_id} disconnected and removed",
             "debug": {"client_id": client_id}
         })
     
     return jsonify({
         "command": command, 
-        "message": "Comando sconosciuto",
+        "message": "Unknown command",
         "available_commands": [
             "upload_public_key",
-            "join_room:NOME_STANZA",
-            "send_message:TESTO", 
-            "send_private:CLIENT_ID:MESSAGGIO",
+            "join_room:ROOM_NAME",
+            "send_message:TEXT",
+            "send_private:CLIENT_ID:MESSAGE",
             "get_messages",
             "get_private_messages",
             "list_rooms",
