@@ -1,8 +1,10 @@
 :root {
 	font-family: Inter, system-ui, Avenir, Helvetica, Arial, 'Clash Grotesk', sans-serif;
 
-	color: #222;
-	background-color: #ffffff;
+	color: #fff;
+	background-color: rgba(37, 37, 38, 0.50);
+
+	--border: rgba(255, 255, 255, 0.25);
 
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
@@ -20,12 +22,7 @@ body{background-color: var(--background-color);}
 .row{flex-direction: row;}
 .column{flex-direction: column;}
 
-button{
-    padding: 10px 16px;
-    border: none;
-    border-radius: 9px;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.01));
-}
+button{padding: 10px; border: none; outline: none; cursor: pointer;}
 input{border: none; outline: none;}
 p{color: #FFFFFF40;}
 ul{list-style: none;}
