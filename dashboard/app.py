@@ -17,8 +17,8 @@ try:
     redis_client.ping()
     REDIS_AVAILABLE = True
     print("Connected to Redis")
-except:
-    print("Redis not available")
+except RedisError as a:
+    print(f"Redis not available:\n{a}")
     redis_client = None
     REDIS_AVAILABLE = False
 
@@ -154,7 +154,7 @@ def health():
         try:
             redis_client.ping()
             health_status["redis_status"] = "connected"
-        except:
+        except RedisError:
             health_status["redis_status"] = "disconnected"
             health_status["status"] = "degraded"
     
@@ -178,11 +178,11 @@ def debug():
         ("file_receiver_log", FILE_RECEIVER_LOG_PATH)
     ]:
         debug_info[f"{path_name}_readable"] = os.access(path, os.R_OK) if os.path.exists(path) else False
-        debug_info[f"{path_name}_size"] = os.path.getsize(path) if os.path.exists(path) else 0
+        debug_info[f"{path_name}_size"] = str(os.path.getsize(path) if os.path.exists(path) else 0)
     
     if REDIS_AVAILABLE:
         try:
-            debug_info["redis_info"] = get_redis_stats()
+            debug_info["redis_info"] = str(get_redis_stats())
         except Exception as e:
             debug_info["redis_error"] = str(e)
     
@@ -231,7 +231,7 @@ def get_redis_stats():
                 last_seen = datetime.fromisoformat(client_data['last_seen'])
                 if datetime.now() - last_seen <= timedelta(hours=1):
                     online_clients += 1
-            except:
+            except (KeyError, ValueError):
                 pass
     
     return {

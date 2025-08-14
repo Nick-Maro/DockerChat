@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Sicurezza</title>
+    <title>Security Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../static/style.css">
@@ -14,9 +14,9 @@
         <div class="text-center mb-5">
             <h1 class="display-4 header-title">
                 <i class="fas fa-shield-alt me-3"></i>
-                Dashboard Sicurezza
+                Security Dashboard
             </h1>
-            <p class="lead text-muted">Centro di controllo per la gestione della sicurezza di rete</p>
+            <p class="lead text-muted">Network security management control centre</p>
         </div>
 
 
@@ -26,7 +26,7 @@
                     <div class="card-header">
                         <h5 class="mb-0">
                             <i class="fas fa-info-circle me-2"></i>
-                            Stato del Sistema
+                            System Status
                         </h5>
                     </div>
                     <div class="card-body">
@@ -46,9 +46,9 @@
                                     <div>
                                         <strong>Redis:</strong>
                                         {% if redis_available %}
-                                            <span class="badge bg-success ms-2">Connesso</span>
+                                            <span class="badge bg-success ms-2">Connected</span>
                                         {% else %}
-                                            <span class="badge bg-danger ms-2">Non disponibile</span>
+                                            <span class="badge bg-danger ms-2">Not available</span>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -67,13 +67,13 @@
         <div class="card card-custom h-100 text-center">
             <div class="card-body">
                 <i class="fas fa-fire icon-large text-danger"></i>
-                <h4 class="card-title">Gestione Firewall</h4>
+                <h4 class="card-title">Firewall Management</h4>
                 <p class="card-text">
-                    Configura e gestisci le regole del firewall per proteggere la rete
+                    Configure and manage firewall rules to protect your network
                 </p>
                 <div class="mt-auto">
                     <span class="btn btn-outline-danger">
-                        <i class="fas fa-cog me-2"></i>Configura
+                        <i class="fas fa-cog me-2"></i>Configure
                     </span>
                 </div>
             </div>
@@ -87,13 +87,13 @@
         <div class="card card-custom h-100 text-center">
             <div class="card-body">
                 <i class="fas fa-file-alt icon-large text-info"></i>
-                <h4 class="card-title">Visualizza Log</h4>
+                <h4 class="card-title">View Log</h4>
                 <p class="card-text">
-                    Monitora i log del firewall, honeypot e file receiver in tempo reale
+                    Monitor firewall logs, honeypots, and file receivers in real time
                 </p>
                 <div class="mt-auto">
                     <span class="btn btn-outline-info">
-                        <i class="fas fa-eye me-2"></i>Visualizza
+                        <i class="fas fa-eye me-2"></i>View
                     </span>
                 </div>
             </div>
@@ -107,13 +107,13 @@
         <div class="card card-custom h-100 text-center">
             <div class="card-body">
                 <i class="fas fa-chart-bar icon-large text-success"></i>
-                <h4 class="card-title">Statistiche</h4>
+                <h4 class="card-title">Statistics</h4>
                 <p class="card-text">
-                    Analizza le statistiche di sicurezza e monitora le attività
+                    Analyse security statistics and monitor activities
                 </p>
                 <div class="mt-auto">
                     <span class="btn btn-outline-success">
-                        <i class="fas fa-chart-line me-2"></i>Analizza
+                        <i class="fas fa-chart-line me-2"></i>Analyse
                     </span>
                 </div>
             </div>
@@ -129,13 +129,13 @@
         <div class="card card-custom h-100 text-center">
             <div class="card-body">
                 <i class="fas fa-database icon-large text-warning"></i>
-                <h4 class="card-title">Gestione Redis</h4>
+                <h4 class="card-title">Redis Management</h4>
                 <p class="card-text">
-                    Gestisci i dati Redis, visualizza statistiche e pulisci il database
+                    Manage Redis data, view statistics, and clean up the database
                 </p>
                 <div class="mt-auto">
                     <span class="btn btn-outline-warning">
-                        <i class="fas fa-tools me-2"></i>Gestisci
+                        <i class="fas fa-tools me-2"></i>Manage
                     </span>
                 </div>
             </div>
@@ -152,11 +152,11 @@
                 <i class="fas fa-heartbeat icon-large text-primary"></i>
                 <h4 class="card-title">Health Check</h4>
                 <p class="card-text">
-                    Controlla lo stato di salute di tutti i servizi del sistema
+                    Check the health status of all system services
                 </p>
                 <div class="mt-auto">
                     <span class="btn btn-outline-primary">
-                        <i class="fas fa-stethoscope me-2"></i>Controlla
+                        <i class="fas fa-stethoscope me-2"></i>Check
                     </span>
                 </div>
             </div>
@@ -172,7 +172,7 @@
                 <i class="fas fa-bug icon-large text-secondary"></i>
                 <h4 class="card-title">Debug Info</h4>
                 <p class="card-text">
-                    Visualizza informazioni di debug e diagnostica del sistema
+                    View debug and system diagnostic information
                 </p>
                 <div class="mt-auto">
                     <span class="btn btn-outline-secondary">
@@ -189,7 +189,7 @@
         <footer class="text-center mt-5 pt-4 border-top border-secondary">
             <p class="text-muted">
                 <i class="fas fa-shield-alt me-2"></i>
-                Dashboard Sicurezza - Sistema di Monitoraggio e Gestione
+                Security Dashboard - Monitoring and Management System
             </p>
         </footer>
     </div>
@@ -204,5 +204,6 @@
             location.reload();
         }, 300000);
     </script>
+</div>
 </body>
 </html>
