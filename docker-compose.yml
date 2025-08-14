@@ -82,7 +82,6 @@ services:
     profiles:
       - client_terminal
 
-
   server1:
     build: ./backend-servers/server
     container_name: server1
@@ -97,6 +96,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      - PORT=5000
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -108,7 +108,6 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
-
 
   server2:
     build: ./backend-servers/server
@@ -124,6 +123,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      - PORT=5000
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -135,7 +135,6 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
-
 
   file-receiver:
     build: ./file-receiver

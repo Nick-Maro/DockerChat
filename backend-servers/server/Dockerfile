@@ -1,8 +1,8 @@
-FROM python:3.10-slim
+FROM jarredsumner/bun:edge
 
 WORKDIR /app
 COPY . .
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN bun install
 
-CMD ["python", "app.py"]
+CMD ["bun", "run", "index.ts"]

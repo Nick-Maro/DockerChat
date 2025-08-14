@@ -1,0 +1,20 @@
+{
+  "name": "server",
+  "module": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/uuid": "^10.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "ioredis": "^5.7.0",
+    "redis": "^5.8.1",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.3"
+  }
+}
