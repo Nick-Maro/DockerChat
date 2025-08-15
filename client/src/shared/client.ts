@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'preact/hooks';
 import { generatePublicKey } from './utils';
 
 export function useClientCommands(messages: any[], sendMessage: (msg: any) => void) {
-    const requested = useRef<Record<string, boolean>>({});
+    const requested = useRef<Record<string, boolean | 'forced'>>({});
     const registering = useRef(false);
 
     const sendCommand = async (command: string, payload: Record<string, any> = {}, force = false) => {
@@ -15,9 +15,9 @@ export function useClientCommands(messages: any[], sendMessage: (msg: any) => vo
             return;
         }
 
-        if(clientId && (force || !requested.current[command])){
+        if(clientId && (!requested.current[command] || (force && requested.current[command] !== 'forced'))){
             sendMessage({ command, client_id: clientId, ...payload });
-            requested.current[command] = true;
+            requested.current[command] = force ? 'forced' : true;
         }
     };
 

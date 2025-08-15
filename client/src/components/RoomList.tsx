@@ -18,16 +18,14 @@ export function RoomList() {
     useEffect(() => {
         messages.forEach(msg => {
             if(msg.command === 'list_rooms' && msg.rooms) setRooms(msg.rooms);
-            if (msg.command?.startsWith('join_room:') && msg.room_name) {
-                sendCommand('list_rooms', {}, true);
-            }
+            if(msg.command?.startsWith('join_room:') && msg.room_name) sendCommand('list_rooms', {}, true);
         });
     }, [messages]);
 
     const handleAddRoom = () => {
         const name = prompt("Nome della stanza:");
         if (name) {
-            sendCommand(`join_room:${name}`, {}, true);
+            sendCommand(`join_room:${name}`, {});
         }
     };
 
