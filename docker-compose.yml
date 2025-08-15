@@ -112,7 +112,6 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - SERVER_ID=server1
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
-      - BLACKLIST_THRESHOLD=${BLACKLIST_THRESHOLD}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/status"]
       interval: 30s
@@ -141,7 +140,6 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - SERVER_ID=server2
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
-      - BLACKLIST_THRESHOLD=${BLACKLIST_THRESHOLD}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/status"]
       interval: 30s
