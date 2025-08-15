@@ -3,6 +3,10 @@ import json
 import os
 import redis
 from redis.exceptions import RedisError
+from dotenv import load_dotenv
+
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(dotenv_path)
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -12,8 +16,13 @@ FIREWALL_LOG_PATH = "/app/logs/firewall/firewall.log"
 HONEYPOT_LOG_PATH = "/app/logs/honeypot/log.txt"
 FILE_RECEIVER_LOG_PATH = "/app/logs/file-receiver/log.txt"
 
+REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
+REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+REDIS_DB = int(os.getenv('REDIS_DB', 0))
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', None)
+
 try:
-    redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, password=REDIS_PASSWORD, decode_responses=True)
     redis_client.ping()
     REDIS_AVAILABLE = True
     print("Connected to Redis")
