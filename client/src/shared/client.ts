@@ -5,15 +5,17 @@ export function useClientCommands(messages: any[], sendMessage: (msg: any) => vo
     const requested = useRef<Record<string, boolean>>({});
     const registering = useRef(false);
 
-    const sendCommand = async (command: string, payload: Record<string, any> = {}) => {
+    const sendCommand = async (command: string, payload: Record<string, any> = {}, force = false) => {
         const clientId = localStorage.getItem('client_id');
+
         if(!clientId && !registering.current){
             registering.current = true;
             const publicKey = await generatePublicKey();
             sendMessage({ command: 'upload_public_key', client_id: null, public_key: publicKey });
             return;
         }
-        if(clientId && !requested.current[command]){
+
+        if(clientId && (force || !requested.current[command])){
             sendMessage({ command, client_id: clientId, ...payload });
             requested.current[command] = true;
         }

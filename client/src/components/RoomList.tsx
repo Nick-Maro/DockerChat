@@ -18,8 +18,18 @@ export function RoomList() {
     useEffect(() => {
         messages.forEach(msg => {
             if(msg.command === 'list_rooms' && msg.rooms) setRooms(msg.rooms);
+            if (msg.command?.startsWith('join_room:') && msg.room_name) {
+                sendCommand('list_rooms', {}, true);
+            }
         });
     }, [messages]);
+
+    const handleAddRoom = () => {
+        const name = prompt("Nome della stanza:");
+        if (name) {
+            sendCommand(`join_room:${name}`, {}, true);
+        }
+    };
 
 
     return (
@@ -27,7 +37,7 @@ export function RoomList() {
             <h2>Rooms</h2>
             <ul className="center-flex row">
                 <li>
-                    <button className={`${styles.addRoomBtn} center-flex`}>
+                    <button className={`${styles.addRoomBtn} center-flex`} onClick={handleAddRoom}>
                         <img src={addIcon} alt="add" />
                     </button>
                 </li>
