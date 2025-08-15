@@ -289,7 +289,7 @@ async def main():
     global client_id, heartbeat_active, websocket_connection, main_tasks
 
     host = input("Server host (default: api.localhost): ").strip() or "api.localhost"
-    port_input = input("Port (default: 5000): ").strip()
+    port_input = input("Port (default: 5001): ").strip()
     port = int(port_input) if port_input else 5001
 
     private_key, public_key = generate_or_load_keys()
