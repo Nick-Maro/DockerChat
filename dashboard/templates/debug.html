@@ -65,27 +65,34 @@
                     </div>
                     <div class="card-body">
                         {% if debug_info.redis_available %}
-                        <div class="row mb-2">
-                            <div class="col-8"><strong>Database Keys:</strong></div>
-                            <div class="col-4"><span class="badge bg-primary">{{ debug_info.redis_info.database_keys }}</span></div>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col-8"><strong>Client Online:</strong></div>
-                            <div class="col-4"><span class="badge bg-success">{{ debug_info.redis_info.online_clients }}</span></div>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col-8"><strong>Total Clients:</strong></div>
-                            <div class="col-4"><span class="badge bg-info">{{ debug_info.redis_info.total_clients }}</span></div>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col-8"><strong>Active Rooms:</strong></div>
-                            <div class="col-4"><span class="badge bg-warning">{{ debug_info.redis_info.active_rooms }}</span></div>
-                        </div>
+                            {% if debug_info.redis_error %}
+                            <div class="alert alert-warning mt-2">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Redis Error: {{ debug_info.redis_error }}
+                            </div>
+                            {% else %}
+                            <div class="row mb-2">
+                                <div class="col-8"><strong>Database Keys:</strong></div>
+                                <div class="col-4"><span class="badge bg-primary">{{ debug_info.redis_info.database_keys }}</span></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-8"><strong>Client Online:</strong></div>
+                                <div class="col-4"><span class="badge bg-success">{{ debug_info.redis_info.online_clients }}</span></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-8"><strong>Total Clients:</strong></div>
+                                <div class="col-4"><span class="badge bg-info">{{ debug_info.redis_info.total_clients }}</span></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-8"><strong>Active Rooms:</strong></div>
+                                <div class="col-4"><span class="badge bg-warning">{{ debug_info.redis_info.active_rooms }}</span></div>
+                            </div>
+                            {% endif %}
                         {% else %}
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Redis not available
-                        </div>
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Redis not available
+                            </div>
                         {% endif %}
                     </div>
                 </div>

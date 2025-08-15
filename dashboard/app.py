@@ -191,7 +191,7 @@ def debug():
     
     if REDIS_AVAILABLE:
         try:
-            debug_info["redis_info"] = str(get_redis_stats())
+            debug_info["redis_info"] = get_redis_stats()
         except Exception as e:
             debug_info["redis_error"] = str(e)
     
