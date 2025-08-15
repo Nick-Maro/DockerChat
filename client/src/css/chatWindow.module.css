@@ -1,0 +1,58 @@
+.chatWindow{
+	height: calc(100dvh - 80px - 65px);
+	gap: 10px;
+	padding: 15px;
+	background-color: #1e1e1e;
+	overflow-y: auto;
+	scrollbar-width: thin;
+}
+
+.message.sent{justify-content: flex-end;}
+.message.received{justify-content: flex-start;}
+
+.message.sent p{color: var(--chat-sent-bubble-txt);}
+.message.received p{color: var(--chat-received-bubble-txt);}
+
+.bubble{max-width: 60%; padding: 10px 15px; border-radius: 15px;}
+.sent .bubble{
+  background-color: var(--chat-sent-bubble-bg);
+  border-bottom-right-radius: 4px;
+}
+.received .bubble{
+  background-color: var(--chat-received-bubble-bg);
+  border-bottom-left-radius: 4px;
+}
+
+.time{font-size: 10px; opacity: 0.5; margin-top: 5px;}
+.message.sent .time{color: var(--chat-sent-bubble-txt);}
+.message.received .time{color: var(--chat-received-bubble-txt);}
+
+
+/*** Message Composer ***/
+
+.messageComposer{
+  height: 65px;
+  gap: 10px;
+  padding: 0 15px;
+  border-top: 0.5px solid var(--border);
+}
+
+.messageComposer input, .messageComposer .icon{border-radius: 20px;}
+.messageComposer input{
+  height: 40px;
+  flex: 1;
+  padding: 10px 15px;
+  font-size: 12px;
+  background-color: var(--message-composer-input-bg);
+}
+
+.messageComposer .icon{
+  width: 40px; height: 40px;
+  padding: 20px;
+  cursor: pointer;
+  transition: .15s;
+}
+.messageComposer .icon img{width: 20px; height: 20px; transition: .25s;}
+.messageComposer .icon.attach:hover{background-color: #2d2d2d; transition: .15s;}
+.messageComposer .icon.send{background-color: #8775E9;}
+.messageComposer .icon.send:hover img{transform: translateX(1px) translateY(-1px) rotate(-385deg); transition: .5s;}

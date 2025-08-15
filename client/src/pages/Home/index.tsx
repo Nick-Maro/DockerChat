@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { generateOrLoadKeys, sendCommandHttp } from '../../api/utils';
-import ListRooms from '../../components/roomsList';
+import { ChatWindow } from '../../components/chatWindow';
 
 import styles from './style.module.css';
 
@@ -115,35 +115,7 @@ export function Home(){
 					</div>
 				</div>
 
-				{/* <div class="chat flex column">
-					<div class="message received">
-						Have a great weekend man! <span class="time">12:03</span>
-					</div>
-					
-					<div class="message sent">
-						I have to say something about this. Please send Nathans pics before noon 
-						<span class="time">12:03</span>
-					</div>
-					
-					<div class="message received">
-						I have to say something about this. Please send Nathans pics before noon 🙏 
-						<span class="time">12:03</span>
-					</div>
-					
-					<div class="message sent">
-						Send now lol 😂 <span class="time">12:03</span>
-					</div>
-				</div>
-
-				<div class="message-composer">
-					<input type="text" placeholder="Type a message..." />
-					<div class="icon image">
-						<img src={imageBlack} alt="image" />
-					</div>
-					<div class="icon send">
-						<img src={sendWhite} alt="send" />
-					</div>
-				</div> */}
+				<ChatWindow />
 			</main>
 
 		</div>

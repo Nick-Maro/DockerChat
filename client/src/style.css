@@ -2,9 +2,16 @@
 	font-family: Inter, system-ui, Avenir, Helvetica, Arial, 'Clash Grotesk', sans-serif;
 
 	color: #fff;
-	background-color: rgba(37, 37, 38, 0.50);
+	background-color: #1e1e1e;
 
 	--border: rgba(255, 255, 255, 0.25);
+
+	--chat-sent-bubble-txt: rgba(255, 255, 255, 0.7);
+	--chat-sent-bubble-bg: #8775e9;
+	--chat-received-bubble-txt: rgba(255, 255, 255, 0.7);
+	--chat-received-bubble-bg: #2d2d2d;
+
+	--message-composer-input-bg: #2d2d2d;
 
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
