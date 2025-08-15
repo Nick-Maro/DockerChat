@@ -1,14 +1,9 @@
-import { useEffect, useState } from 'preact/hooks';
-import { generateOrLoadKeys, sendCommandHttp } from '../../api/utils';
 import { ChatWindow } from '../../components/chatWindow';
-
 import styles from './style.module.css';
 
 // icons
-import imageBlack from '../../assets/icons/image-black.svg';
-import sendWhite from '../../assets/icons/send-white.svg';
 import dotsVerticalWhite from '../../assets/icons/dots-vertical-white.svg';
-import addIcon from '../../assets/icons/plus-8775e9.svg';
+import { RoomList } from '../../components/RoomList';
 
 
 interface Props {
@@ -37,37 +32,7 @@ export function Home(){
 					<img className={styles.dots} src={dotsVerticalWhite} alt="settings" />
 				</div>
 
-				<div className={`${styles.rooms} flex column`}>
-					<h2>Rooms</h2>
-					<ul className="center-flex row">
-						<li>
-							<button className={`${styles.addRoomBtn} center-flex`}>
-								<img src={addIcon} alt="add" />
-							</button>
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=M" alt="Main Room" />
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=A" alt="Announcements Room" />
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=M" alt="Main Room" />
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=M" alt="Main Room" />
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=M" alt="Main Room" />
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=M" alt="Main Room" />
-						</li>
-						<li>
-							<img src="https://placehold.co/50x50/8775E9/FFF?text=M" alt="Main Room" />
-						</li>
-					</ul>
-				</div>
+				<RoomList />
 
 				<div className={styles.dm}>
 					<h2>Direct Messages</h2>

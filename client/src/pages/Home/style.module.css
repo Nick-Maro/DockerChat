@@ -6,15 +6,6 @@
 .profile p{font-size: 12px;}
 .profile .dots{width: 20px;}
 
-
-.rooms{padding: 25px 0;}
-.rooms h2{margin-left: 25px;}
-.rooms ul{width: 100%; justify-content: flex-start; gap: 25px; padding: 25px; overflow: auto; scrollbar-width: none;}
-.rooms ul li{display: flex;}
-.rooms ul li > img{border-radius: 50%; outline: 2px solid #8775e9; outline-offset: 2px;}
-.addRoomBtn{width: 60px; height: 60px; border: 2px solid #8775e9; border-radius: 50%;}
-
-
 .dm{padding: 0 0 25px 25px;}
 .dm ul li{display: flex; align-items: center; gap: 15px; margin: 25px 0 0 0; padding-right: 25px; cursor: pointer; transition: .1s;}
 .dm ul li.active, .dm ul li:hover{border-right: 2px solid #8775e9; transition: .1s;}
