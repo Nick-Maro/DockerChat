@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { WS_CONFIG } from "../config";
 import type { Room } from "../types";
 import { useWebSocket } from '../shared/useWebSocket';
@@ -6,26 +6,18 @@ import { useWebSocket } from '../shared/useWebSocket';
 // icons
 import styles from '../css/roomsList.module.css';
 import addIcon from '../assets/icons/plus-8775e9.svg';
-
+import { useClientCommands } from '../shared/client';
 
 
 export function RoomList() {
     const [rooms, setRooms] = useState<Room[]>([]);
-    const { ws, messages, sendMessage } = useWebSocket(`ws://${WS_CONFIG.HOST}:${WS_CONFIG.PORT}`);
+    const { messages, sendMessage } = useWebSocket(`ws://${WS_CONFIG.HOST}:${WS_CONFIG.PORT}`);
+    const { sendCommand } = useClientCommands(messages, sendMessage);
 
+    useEffect(() => { sendCommand('list_rooms'); }, [sendCommand]);
     useEffect(() => {
-        const clientId = localStorage.getItem('client_id');
-        if (clientId) sendMessage({ command: 'list_rooms', clientId });
-    }, [ws]);
-
-    useEffect(() => {
-        messages.forEach((data) => {
-            if(data.command === 'upload_public_key' && data.status === 'registered'){
-                localStorage.setItem('client_id', data.client_id);
-                sendMessage({ command: 'list_rooms', client_id: data.client_id });
-            }
-
-            if(data.command === 'list_rooms' && data.rooms) setRooms(data.rooms);
+        messages.forEach(msg => {
+            if(msg.command === 'list_rooms' && msg.rooms) setRooms(msg.rooms);
         });
     }, [messages]);
 

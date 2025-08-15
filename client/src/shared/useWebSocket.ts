@@ -17,9 +17,13 @@ export function useWebSocket(url: string) {
     };
     ws.onclose = () => setStatus("closed");
     ws.onerror = () => setStatus("error");
-    ws.onmessage = e => {
-      try { setMessages(prev => [...prev, JSON.parse(e.data)]); }
-      catch { console.error("JSON parse error"); }
+    ws.onmessage = (e) => {
+      try{
+        const data = JSON.parse(e.data);
+        // console.log("Received message:", data);
+        setMessages(prev => [...prev, data]);
+      }
+      catch(err){ console.error("JSON parse error:", e.data, err); }
     };
 
     return () => ws.close();
