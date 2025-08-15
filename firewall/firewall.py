@@ -6,7 +6,7 @@ import threading
 import os
 import time
 from dotenv import load_dotenv
-from requests import JSONDecodeError
+from json import JSONDecodeError
 
 load_dotenv()
 
