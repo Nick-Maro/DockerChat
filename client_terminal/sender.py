@@ -3,11 +3,8 @@ import json
 import base64
 import os
 import sys
-import threading
-import time
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
-import websockets
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
 client_id = None
@@ -291,9 +288,9 @@ async def quit_client(websocket, private_key, force_quit=False):
 async def main():
     global client_id, heartbeat_active, websocket_connection, main_tasks
 
-    host = input("Server host (default: localhost): ").strip() or "localhost"
+    host = input("Server host (default: api.localhost): ").strip() or "api.localhost"
     port_input = input("Port (default: 5000): ").strip()
-    port = int(port_input) if port_input else 5000
+    port = int(port_input) if port_input else 5001
 
     private_key, public_key = generate_or_load_keys()
     print("[CLIENT] Public key generated/loaded")
