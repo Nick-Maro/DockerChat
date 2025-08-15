@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import json
 import os
@@ -238,7 +240,9 @@ def get_redis_stats():
             from datetime import datetime, timedelta
             try:
                 last_seen = datetime.fromisoformat(client_data['last_seen'])
-                if datetime.now() - last_seen <= timedelta(hours=1):
+                if last_seen.tzinfo is None:
+                    last_seen = last_seen.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - last_seen <= timedelta(hours=1):
                     online_clients += 1
             except (KeyError, ValueError):
                 pass
