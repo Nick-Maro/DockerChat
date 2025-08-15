@@ -3,6 +3,7 @@ import uuid
 import json
 import redis
 from datetime import datetime, timedelta
+from json import JSONDecodeError
 
 app = Flask(__name__)
 
@@ -15,7 +16,7 @@ try:
     redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
     redis_client.ping()
     print("Connected to Redis")
-except:
+except (ConnectionRefusedError, TimeoutError):
     print("Redis unavailable, use local storage")
     redis_client = None
 
@@ -28,7 +29,7 @@ def is_expired(timestamp_iso, ttl_seconds):
     try:
         timestamp = datetime.fromisoformat(timestamp_iso)
         return datetime.now() - timestamp > timedelta(seconds=ttl_seconds)
-    except:
+    except (KeyError, ValueError):
         return True
 
 def clean_expired_data():
@@ -86,7 +87,7 @@ def get_clients():
         try:
             clients_data = redis_client.get('clients')
             return json.loads(clients_data) if clients_data else {}
-        except:
+        except JSONDecodeError:
             return {}
     return local_clients
 
@@ -107,7 +108,7 @@ def get_rooms():
         try:
             rooms_data = redis_client.get('rooms')
             return json.loads(rooms_data) if rooms_data else {}
-        except:
+        except JSONDecodeError:
             return {}
     return local_rooms
 
@@ -115,7 +116,7 @@ def set_rooms(rooms):
     if redis_client:
         try:
             redis_client.set('rooms', json.dumps(rooms))
-        except:
+        except (ConnectionError, TimeoutError):
             pass
     local_rooms.update(rooms)
 
@@ -124,7 +125,7 @@ def get_private_messages():
         try:
             private_data = redis_client.get('private_messages')
             return json.loads(private_data) if private_data else {}
-        except:
+        except JSONDecodeError:
             return {}
     return local_private_messages
 
@@ -132,7 +133,7 @@ def set_private_messages(private_msgs):
     if redis_client:
         try:
             redis_client.set('private_messages', json.dumps(private_msgs))
-        except:
+        except (ConnectionError, TimeoutError):
             pass
     local_private_messages.update(private_msgs)
 
