@@ -118,6 +118,16 @@ export class CommandHandler {
                     break;
                 }
                 await this.joinRoom(client_id, currentClient, room_name, clients, rooms)
+                for (const [otherClientId, otherWs] of wsClientMap) {
+                    if (otherClientId !== client_id && clients[otherClientId]?.room_id === room_name) {
+                        otherWs.send(JSON.stringify({
+                            event: 'user_joined',
+                            room_name: room_name,
+                            client_id: client_id,
+                            clients_in_room: Object.keys(rooms[room_name].clients).length
+                        }));
+                    }
+                }
                 response = {
                     ...response,
                     message: `Joined room '${room_name}'`,
@@ -138,13 +148,22 @@ export class CommandHandler {
                         timestamp: getCurrentISOString(),
                         public_key: currentClient.public_key
                     });
+                    for (const [otherClientId, otherWs] of wsClientMap) {
+                        if (otherClientId !== client_id && clients[otherClientId]?.room_id === currentClient.room_id) {
+                            otherWs.send(JSON.stringify({
+                                event: 'room_message_received',
+                                from: client_id,
+                                text: message_text,
+                                timestamp: getCurrentISOString()
+                            }));
+                        }
+                    }
                     response = {
                         ...response,
                         message: `Message sent in room '${room_id}'`,
                         room_name: room_id,
                         message_text: message_text
                     };
-
                 } else response.error = "You aren't connected to any room";
                 break;
             }
@@ -157,9 +176,16 @@ export class CommandHandler {
 
                 const to_client_id = parts[1];
                 const message_text = parts[2];
+                const to_client_ws = wsClientMap.get(to_client_id);
 
-                if (clients[to_client_id]) {
+                if (clients[to_client_id] && to_client_ws) {
                     const message_id = await this.dataManager.addPrivateMessage(client_id, to_client_id, message_text, signature);
+                    to_client_ws.send(JSON.stringify({
+                        event: 'private_message_received',
+                        from: client_id,
+                        text: message_text,
+                        timestamp: getCurrentISOString()
+                    }));
                     response = {
                         ...response,
                         message: `Private message sent to ${to_client_id}`,
@@ -239,10 +265,12 @@ export class CommandHandler {
             }
             case command === "leave_room": {
                 const room_id = currentClient.room_id;
+                const rooms = await this.dataManager.getRooms();
                 if (room_id) {
                     await this.dataManager.removeClientFromRoom(client_id, room_id);
                     currentClient.room_id = null;
                     await storage.setClients(clients);
+                    this.leaveBroadcast(currentClient, client_id, clients, room_id, rooms, wsClientMap, "user_left")
                     response.message = `Left the room '${room_id}'`;
                 } else response.error = "You're not in any room";
                 break;
@@ -256,8 +284,11 @@ export class CommandHandler {
                 break;
             }
             case command === "disconnect": {
+                const rooms = await this.dataManager.getRooms();
+                const room_id = currentClient.room_id || "";
                 await this.dataManager.removeClient(client_id);
                 wsClientMap.delete(client_id);
+                this.leaveBroadcast(currentClient, client_id, clients, room_id, rooms, wsClientMap, "user_disconnect")
                 response = {
                     ...response,
                     message: `Client ${client_id} disconnected and removed`,
@@ -272,7 +303,7 @@ export class CommandHandler {
         ws.send(JSON.stringify(response));
     }
 
-    public async joinRoom(client_id: string, currentClient: Client, room_name: string, clients: {[p: string]: Client}, rooms: {[p: string]: Room}) {
+    private async joinRoom(client_id: string, currentClient: Client, room_name: string, clients: {[p: string]: Client}, rooms: {[p: string]: Room}) {
         if (currentClient.room_id) await this.dataManager.removeClientFromRoom(client_id, currentClient.room_id);
         currentClient.room_id = room_name;
         await storage.setClients(clients);
@@ -284,5 +315,21 @@ export class CommandHandler {
             public_key: currentClient.public_key,
             last_seen: getCurrentISOString()
         };
+    }
+
+    private leaveBroadcast(currentClient : Client, client_id: string, clients: { [p: string]: Client },
+                           room_id: string, rooms: { [ r: string]: Room },
+                           wsClientMap: Map<string, ServerWebSocket<WebSocketData>>,
+                           event_name: string) {
+        for (const [otherClientId, otherWs] of wsClientMap) {
+            if (otherClientId !== client_id && clients[otherClientId]?.room_id === currentClient.room_id) {
+                otherWs.send(JSON.stringify({
+                    event: event_name,
+                    room_name: room_id,
+                    client_id: client_id,
+                    clients_in_room: Object.keys(rooms[room_id]?.clients || {}).length
+                }));
+            }
+        }
     }
 }
