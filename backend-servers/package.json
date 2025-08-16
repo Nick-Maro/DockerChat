@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "redis": "^5.8.1"
+  }
+}
