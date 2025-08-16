@@ -3,7 +3,7 @@ import { DataManager } from "./dataManager";
 import { storage } from "./storage";
 import { CONFIG } from "./config";
 import { isExpired, generateUUID, getCurrentISOString } from "./utils";
-import type { WSMessage, WSResponse } from './types';
+import type {Client, Room, WSMessage, WSResponse} from './types';
 
 type WebSocketData = {
     clientId: string | null;
@@ -86,20 +86,38 @@ export class CommandHandler {
         let response: WSResponse = { command, message: "Unknown command", debug: debug_info };
 
         switch (true) {
+            case command.startsWith("create_room:"): {
+                const room_name = command.split(":", 2)[1];
+                if (!room_name) {
+                    response.error = "Command format: create_room:ROOM_NAME";
+                    break;
+                }
+                const rooms = await this.dataManager.getRooms();
+                if(rooms && rooms[room_name]) {
+                    response.error = "Name already taken, please change or join it";
+                    break;
+                }
+                await this.joinRoom(client_id, currentClient, room_name, clients, rooms)
+                response = {
+                    ...response,
+                    message: `Created room '${room_name}'`,
+                    room_name: room_name,
+                    clients_in_room: Object.keys(rooms[room_name]?.clients || {}).length
+                };
+                break;
+            }
             case command.startsWith("join_room:"): {
                 const room_name = command.split(":", 2)[1];
                 if (!room_name) {
                     response.error = "Command format: join_room:ROOM_NAME";
                     break;
                 }
-                if (currentClient.room_id) await this.dataManager.removeClientFromRoom(client_id, currentClient.room_id);
-                currentClient.room_id = room_name;
-                await storage.setClients(clients);
-                await this.dataManager.addClientToRoom(room_name, client_id, {
-                    public_key: currentClient.public_key,
-                    last_seen: getCurrentISOString()
-                });
                 const rooms = await this.dataManager.getRooms();
+                if(!rooms || !rooms[room_name]) {
+                    response.error = "Invalid room name";
+                    break;
+                }
+                await this.joinRoom(client_id, currentClient, room_name, clients, rooms)
                 response = {
                     ...response,
                     message: `Joined room '${room_name}'`,
@@ -252,5 +270,19 @@ export class CommandHandler {
         }
 
         ws.send(JSON.stringify(response));
+    }
+
+    public async joinRoom(client_id: string, currentClient: Client, room_name: string, clients: {[p: string]: Client}, rooms: {[p: string]: Room}) {
+        if (currentClient.room_id) await this.dataManager.removeClientFromRoom(client_id, currentClient.room_id);
+        currentClient.room_id = room_name;
+        await storage.setClients(clients);
+        await this.dataManager.addClientToRoom(room_name, client_id, {
+            public_key: currentClient.public_key,
+            last_seen: getCurrentISOString()
+        });
+        rooms[room_name]!.clients[client_id] = {
+            public_key: currentClient.public_key,
+            last_seen: getCurrentISOString()
+        };
     }
 }
