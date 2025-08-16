@@ -64,13 +64,25 @@ const messages = [
   },
 ];
 
-
 export function ChatWindow() {
   const endRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      console.log("File selected:", file);
+      // conan implement the file upload logic
+    }
+  };
 
   return (
     <>
@@ -87,15 +99,21 @@ export function ChatWindow() {
       </div>
 
       <div className={`${styles.messageComposer} center-flex`}>
-        <div className={[styles.icon, styles.attach, 'center-flex'].join(' ')}>
+        <div className={[styles.icon, styles.attach, 'center-flex'].join(' ')} onClick={openFileDialog}>
           <img src={attachWhite} alt="attach" />
         </div>
 
         <input type="text" placeholder="Type a message..." />
-        
         <div className={[styles.icon, styles.send, 'center-flex'].join(' ')}>
           <img src={sendWhite} alt="send" />
         </div>
+
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          style={{ display: "none" }} 
+          onChange={handleFileChange} 
+        />
       </div>
     </>
   );
