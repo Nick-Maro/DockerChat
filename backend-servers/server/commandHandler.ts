@@ -311,7 +311,18 @@ export class CommandHandler {
             public_key: currentClient.public_key,
             last_seen: getCurrentISOString()
         });
-        rooms[room_name]!.clients[client_id] = {
+        
+        // room name check
+        if(!rooms[room_name]){
+            rooms[room_name] = {
+                clients: {},
+                messages: [],
+                created_at: getCurrentISOString(),
+                last_activity: getCurrentISOString()
+            };
+        }
+        
+        rooms[room_name].clients[client_id] = {
             public_key: currentClient.public_key,
             last_seen: getCurrentISOString()
         };
