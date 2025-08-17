@@ -4,21 +4,14 @@ import styles from './style.module.css';
 // icons
 import dotsVerticalWhite from '../../assets/icons/dots-vertical-white.svg';
 import { RoomList } from '../../components/RoomList';
-
-
-interface Props {
-  privateKey: CryptoKey;
-  host: string;
-  port: number;
-}
-
-interface Room {
-  id: string;
-  name: string;
-}
+import { useChat } from '../../shared/chatContext';
 
 
 export function Home(){
+	const { currentRoom } = useChat();
+
+	const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+
 	return (
 		<div className={`${styles.home} flex row`}>
 
@@ -72,13 +65,22 @@ export function Home(){
 			</section>
 
 			<main>
-				<div class={`${styles.header} center-flex`}>
-					<img src="https://avatar.iran.liara.run/public/girl?username=Addisyn" alt="pfp" />
-					<div className={`${styles.person} flex column`}>
-						<h2>Addisyn Lawson</h2>
-						<p class="status">Typing...</p>
+				{currentRoom && (
+					<div class={`${styles.header} center-flex`}>
+						<img src={`https://placehold.co/50x50/8775E9/FFF?text=%23`} alt="pfp" />
+						<div className={`${styles.person} flex column`}>
+							<h2>{capitalize(currentRoom.name)}</h2>
+							<p class="status">{currentRoom.clients} clients - {currentRoom.messages} messages - {new Date(currentRoom.last_activity).toLocaleString("en-US", {
+								year: "numeric",
+								month: "short",
+								day: "numeric",
+								hour: "numeric",
+								minute: "2-digit",
+								hour12: true
+							})}</p>
+						</div>
 					</div>
-				</div>
+				)}
 
 				<ChatWindow />
 			</main>
