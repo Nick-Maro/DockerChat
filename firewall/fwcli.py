@@ -12,7 +12,7 @@ def load_rules():
         return {
             "blocked_ips": [],
             "allowed_ports": [80, 443],
-            "max_attempts_per_minute": 250
+            "max_attempts_per_minute": 750
         }
 
 def save_rules(rules):
