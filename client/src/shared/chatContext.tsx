@@ -8,7 +8,7 @@ const ChatContext = createContext<ChatContextType | null>(null);
 
 
 export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
-  const { clientId } = useClient();
+  const { username } = useClient();
   const { status, messages, sendMessage } = useSocket();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -21,12 +21,12 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const sentMessages = useRef(new Set());
 
   useEffect(() => {
-    if(status === "open" && clientId && !hasInitialized.current) {
+    if(status === "open" && username && !hasInitialized.current) {
       hasInitialized.current = true;
-      sendMessage({ command: "list_rooms", client_id: clientId });
-      sendMessage({ command: "list_clients", client_id: clientId });
+      sendMessage({ command: "list_rooms", client_id: username });
+      sendMessage({ command: "list_clients", client_id: username });
     }
-  }, [status, clientId]);
+  }, [status, username]);
 
   useEffect(() => {
     if (messages.length <= lastMessageCount.current) return;
@@ -80,11 +80,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           processedMessages.current.clear();
         }
         else if(message.room_name){
-          if(clientId && status === "open") {
+          if(username && status === "open") {
             setRoomMessages([]);
             sentMessages.current.clear();
             processedMessages.current.clear();
-            sendMessage({ command: "get_messages", client_id: clientId });
+            sendMessage({ command: "get_messages", client_id: username });
           }
         }
       }
@@ -92,19 +92,19 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         if(message.error) console.error("Failed to leave room:", message.error);
       }
     });
-  }, [messages, clientId, status]);
+  }, [messages, username, status]);
 
   const joinRoom = (roomName: string) => {
-    if(clientId && status === "open") {
+    if(username && status === "open") {
       if(currentRoom && currentRoom.name !== roomName) {
-        sendMessage({ command: "leave_room", client_id: clientId });
+        sendMessage({ command: "leave_room", client_id: username });
         setCurrentRoom(null);
         setRoomMessages([]);
         sentMessages.current.clear();
         processedMessages.current.clear();
       }
       
-      sendMessage({ command: `join_room:${roomName}`, client_id: clientId });
+      sendMessage({ command: `join_room:${roomName}`, client_id: username });
       
       const room = rooms.find(r => r.name === roomName);
       if(room) {
@@ -117,18 +117,18 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   };
 
   const leaveRoom = () => {
-    if(clientId && currentRoom && status === "open") {
+    if(username && currentRoom && status === "open") {
       setCurrentRoom(null);
       setRoomMessages([]);
       sentMessages.current.clear();
       processedMessages.current.clear();
       
-      sendMessage({ command: "leave_room", client_id: clientId });
+      sendMessage({ command: "leave_room", client_id: username });
     }
   };
 
   const createRoom = (roomName: string) => {
-    if(clientId && status === "open") {
+    if(username && status === "open") {
       const newRoom: Room = {
         name: roomName,
         clients: 1,
@@ -138,25 +138,25 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       };
       
       setRooms(prev => [...prev, newRoom]);
-      sendMessage({ command: `create_room:${roomName}`, client_id: clientId });
+      sendMessage({ command: `create_room:${roomName}`, client_id: username });
       setCurrentRoom(newRoom);
       setRoomMessages([]);
     }
   };
 
   const sendMessageToRoom = (text: string) => {
-    if(clientId && currentRoom && status === "open") {
+    if(username && currentRoom && status === "open") {
       const newMessage = {
-        from_client: clientId,
+        from_client: username,
         text: text,
         timestamp: new Date().toISOString(),
         public_key: ""
       };
       
-      const messageKey = `${clientId}:${text}:${newMessage.timestamp}`;
+      const messageKey = `${username}:${text}:${newMessage.timestamp}`;
       sentMessages.current.add(messageKey);
       setRoomMessages(prev => [...prev, newMessage]);
-      sendMessage({ command: `send_message:${text}`, client_id: clientId });
+      sendMessage({ command: `send_message:${text}`, client_id: username });
     }
   };
 

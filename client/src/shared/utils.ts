@@ -14,6 +14,14 @@ export async function generatePublicKey(): Promise<string> {
     return btoa(String.fromCharCode(...new Uint8Array(exported)));
 }
 
+export async function getOrCreatePublicKey(): Promise<string> {
+  const cached = localStorage.getItem('public_key');
+  if(cached) return cached;
+  const pub = await generatePublicKey();
+  localStorage.setItem('public_key', pub);
+  return pub;
+}
+
 export function formatDateTime(dateStr: string): string {
   const dt = new Date(dateStr);
   const now = new Date();

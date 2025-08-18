@@ -10,7 +10,7 @@ import sendWhite from '../assets/icons/send-white.svg';
 
 export function ChatWindow(){
   const { currentRoom, messages, sendMessage } = useChat();
-  const { clientId } = useClient();
+  const { username } = useClient();
   const [messageText, setMessageText] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,9 +61,9 @@ export function ChatWindow(){
               <p>No messages yet.</p>
             </div>
             ) : (messages.map((msg, index) => (
-              <div key={index} className={`${styles.message} ${msg.from_client === clientId ? styles.sent : styles.received} flex`}>
+              <div key={index} className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} flex`}>
                 <div className={styles.bubble}>
-                  <span className={styles.username}>{msg.from_client === clientId ? 'You' : msg.from_client}</span>
+                  <span className={styles.username}>{msg.from_client === username ? 'You' : msg.from_client}</span>
                   <p className={styles.messageText}>{msg.text}</p>
                   <span className={styles.time}>
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

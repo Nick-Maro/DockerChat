@@ -15,7 +15,7 @@ export interface SocketProviderProps {
 
 /*** Auth ***/
 export type ClientContextType = {
-  clientId: string | null;
+  username: string | null;
   loading: boolean;
 };
 
