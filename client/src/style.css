@@ -29,7 +29,7 @@ body{background-color: var(--background-color);}
 .row{flex-direction: row;}
 .column{flex-direction: column;}
 
-button{padding: 10px; border: none; outline: none; cursor: pointer;}
+button{padding: 10px; border: none; background: none; outline: none; cursor: pointer;}
 input{border: none; outline: none;}
 p{color: #FFFFFF40;}
 ul{list-style: none;}

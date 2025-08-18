@@ -1,7 +1,7 @@
 .rooms{padding: 25px 0;}
 .rooms h2{margin-left: 25px;}
 .rooms ul{width: 100%; justify-content: flex-start; gap: 25px; padding: 25px; overflow: auto; scrollbar-width: none;}
-.rooms ul li{display: flex;}
+.rooms ul li{display: flex; cursor: pointer; background: none;}
 .rooms ul li > img{border-radius: 50%; outline: 2px solid #8775e9; outline-offset: 2px;}
 .addRoomBtn{width: 60px; height: 60px; border: 2px solid #8775e9; border-radius: 50%;}
 

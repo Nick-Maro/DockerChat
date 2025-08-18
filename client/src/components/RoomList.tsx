@@ -27,9 +27,8 @@ export function RoomList(){
                     </button>
                 </li>
                 {rooms.map((room) => (
-                    <li key={room.name}>
+                    <li key={room.name} className={currentRoom?.name === room.name ? styles.activeRoom : ''}>
                         <img
-                            className={`${styles.roomButton} ${currentRoom?.name === room.name ? styles.activeRoom : ''}`}
                             onClick={() => handleJoinRoom(room.name)}
                             title={`${room.name} — ${room.clients} clients, ${room.messages} messages`}
                             src={`https://placehold.co/50x50/8775E9/FFF?text=${room.name.charAt(0).toUpperCase()}`}
