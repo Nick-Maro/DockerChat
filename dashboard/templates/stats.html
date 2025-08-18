@@ -19,9 +19,8 @@
             </div>
         </div>
 
-
         <div class="row mb-4">
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <div class="card stat-card card-custom">
                     <div class="card-body text-center">
                         <i class="fas fa-ban fa-3x mb-3 text-danger"></i>
@@ -32,18 +31,7 @@
                 </div>
             </div>
             
-            <div class="col-md-4">
-                <div class="card stat-card card-custom">
-                    <div class="card-body text-center">
-                        <i class="fas fa-eye fa-3x mb-3 text-info"></i>
-                        <h3 class="text-warning">{{ honeypot_attempts or 0 }}</h3>
-                        <p class="lead mb-0">Honeypot Attempts</p>
-                        <small class="text-muted">Detected</small>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <div class="card stat-card card-custom">
                     <div class="card-body text-center">
                         <i class="fas fa-file-upload fa-3x mb-3 text-success"></i>
@@ -54,7 +42,6 @@
                 </div>
             </div>
         </div>
-
 
         <div class="row mb-4">
             <div class="col-12">
@@ -75,12 +62,6 @@
                                             <i class="fas fa-circle"></i>
                                         </span>
                                         Firewall: Active
-                                    </li>
-                                    <li class="mb-2">
-                                        <span class="badge bg-success me-2">
-                                            <i class="fas fa-circle"></i>
-                                        </span>
-                                        Honeypot: Active
                                     </li>
                                     <li class="mb-2">
                                         <span class="badge bg-success me-2">
@@ -113,7 +94,6 @@
                 </div>
             </div>
         </div>
-
 
         <div class="row mb-4">
             <div class="col-md-6">
@@ -167,7 +147,6 @@
             </div>
         </div>
 
-
         <div class="row">
             <div class="col-12">
                 <div class="card card-custom">
@@ -208,20 +187,16 @@
         }
         
         function exportStats() {
-
             alert('Feature to be implemented - Export statistics');
         }
         
         function resetStats() {
             if (confirm('Are you sure you want to reset all statistics? This action cannot be undone.')) {
-
                 alert('Feature to be implemented - Reset statistics');
             }
         }
 
-
         setInterval(refreshStats, 60000);
-
 
         function updateUptime() {
             const uptimeElement = document.querySelector('.text-warning');
@@ -232,3 +207,6 @@
         }
 
         updateUptime();
+    </script>
+</body>
+</html>
