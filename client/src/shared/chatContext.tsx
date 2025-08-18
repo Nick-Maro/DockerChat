@@ -2,7 +2,7 @@ import { createContext, ComponentChildren } from "preact";
 import { useContext, useState, useEffect, useRef } from "preact/hooks";
 import { useClient } from "./authContext";
 import { useSocket } from "./webSocketContext";
-import { Room, ChatContextType, Message } from "../types";
+import { Room, ChatContextType, Message, Client } from "../types";
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
@@ -11,6 +11,8 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const { clientId } = useClient();
   const { status, messages, sendMessage } = useSocket();
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [currentClient, setCurrentClient] = useState<Client | null>(null);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const hasInitialized = useRef(false);
@@ -22,6 +24,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     if(status === "open" && clientId && !hasInitialized.current) {
       hasInitialized.current = true;
       sendMessage({ command: "list_rooms", client_id: clientId });
+      sendMessage({ command: "list_clients", client_id: clientId });
     }
   }, [status, clientId]);
 
@@ -37,9 +40,10 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       if (processedMessages.current.has(messageId)) return;
       processedMessages.current.add(messageId);
       
-      // console.log('WebSocket response received:', message);
+      console.log('WebSocket response received:', message);
       
       if(message.command === "list_rooms") setRooms(message.rooms || []);
+      else if(message.command === "list_clients") setClients(message.clients || []);
       else if(message.command === "get_messages") setRoomMessages(message.messages || []);
       else if(message.event === "room_message_received") {
         const messageKey = `${message.from}:${message.text}:${message.timestamp}`;
@@ -161,6 +165,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       rooms, 
       currentRoom, 
       messages: roomMessages,
+      clients,
       joinRoom, 
       leaveRoom, 
       createRoom, 

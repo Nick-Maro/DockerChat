@@ -13,3 +13,16 @@ export async function generatePublicKey(): Promise<string> {
     const exported = await crypto.subtle.exportKey("spki", keyPair.publicKey);
     return btoa(String.fromCharCode(...new Uint8Array(exported)));
 }
+
+export function formatDateTime(dateStr: string): string {
+  const dt = new Date(dateStr);
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const sameDay = dt.toDateString() === now.toDateString();
+  const time = [dt.getHours(), dt.getMinutes()].map(pad).join(":");
+
+  if(sameDay) return time;
+
+  const date = [pad(dt.getDate()), pad(dt.getMonth() + 1), dt.getFullYear().toString().slice(-2)].join("/");
+  return `${date} ${time}`;
+}

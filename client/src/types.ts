@@ -12,8 +12,8 @@ export interface SocketProviderProps {
   children: ComponentChildren;
 }
 
-/*** Auth ***/
 
+/*** Auth ***/
 export type ClientContextType = {
   clientId: string | null;
   loading: boolean;
@@ -21,11 +21,11 @@ export type ClientContextType = {
 
 
 /*** Chat ***/
-
 export type ChatContextType = {
   rooms: Room[];
   currentRoom: Room | null;
   messages: Message[];
+  clients: Client[];
   joinRoom: (roomName: string) => void;
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
@@ -55,23 +55,23 @@ export type Room = {
 };
 
 export interface Client {
-    client_id: string;
-    room_id: string | null;
-    last_seen: string;
-    online: boolean;
+  client_id: string;
+  room_id: string | null;
+  last_seen: string;
+  online: boolean;
 }
 
 export interface PrivateMessage {
-    from_client: string;
-    to_client: string;
-    text: string;
-    timestamp: string;
-    direction: 'sent' | 'received';
+  from_client: string;
+  to_client: string;
+  text: string;
+  timestamp: string;
+  direction: 'sent' | 'received';
 }
 
 export interface Message {
-    from_client: string;
-    text: string;
-    timestamp: string;
-    public_key: string;
+  from_client: string;
+  text: string;
+  timestamp: string;
+  public_key: string;
 }

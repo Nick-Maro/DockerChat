@@ -1,0 +1,10 @@
+.dm{padding-left: 25px;}
+.dm h2{height: 30px; margin-bottom: 20px;}
+.dm ul{height: calc(100dvh - 295px); overflow: auto; overflow-x: hidden; scrollbar-width: none;}
+.dm ul li{display: flex; align-items: center; gap: 15px; margin: 0 0 25px 0; padding-right: 25px; cursor: pointer; transition: .1s;}
+.dm ul li.active, .dm ul li:hover{border-right: 2px solid #8775e9; transition: .1s;}
+.dm ul li img{width: 45px; height: 45px; flex-shrink: 0; object-fit: cover; border-radius: 50%;}
+.dm ul li .info{width: 100%;}
+.dm ul li .name{justify-content: space-between;}
+.dm ul li .name h3{font-weight: 300;}
+.dm ul li .name p{font-size: 12px;}

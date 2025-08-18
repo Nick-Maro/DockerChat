@@ -7,15 +7,6 @@
 .profile .dots{width: 45px; height: 45px; padding: 10px; border-radius: 50%; cursor: pointer; transition: .15s;}
 .profile .dots:hover{background-color: #2d2d2d; transition: .15s;}
 
-.dm{padding: 0 0 25px 25px;}
-.dm ul li{display: flex; align-items: center; gap: 15px; margin: 25px 0 0 0; padding-right: 25px; cursor: pointer; transition: .1s;}
-.dm ul li.active, .dm ul li:hover{border-right: 2px solid #8775e9; transition: .1s;}
-.dm ul li img{width: 45px; height: 45px; flex-shrink: 0; object-fit: cover; border-radius: 50%;}
-.dm ul li .info{width: 100%;}
-.dm ul li .name{justify-content: space-between;}
-.dm ul li .name h3{font-weight: 300;}
-.dm ul li .name p{font-size: 12px;}
-
 
 /*** MAIN SECTION ***/
 
@@ -35,68 +26,3 @@
 .home main .header .person h2{font-size: 20px; font-weight: 500;}
 .home main .header .person p{font-size: 14px;}
 .home main .header img{width: 50px; height: 50px; border-radius: 50%;}
-
-
-
-/*** CHAT ***/
-
-.home main .chat{gap: 15px; padding: 15px;}
-
-.message{
-    max-width: 80%;
-    display: inline-block;
-    position: relative;
-    font-size: 15px;
-    padding: 10px 15px;
-    border-radius: 16px;
-}
-
-.message.sent{
-    align-self: flex-end;
-    color: white;
-    border-bottom-right-radius: 5px;
-    background-color: #845B92;
-}
-
-.message.received{
-    align-self: flex-start;
-    color: black;
-    border-bottom-left-radius: 5px;
-    background-color: #f1f0f0;
-}
-
-.message .time{font-size: 10px; margin-left: 5px;}
-.message.received .time{color: rgba(0, 0, 0, 0.4);}
-.message.sent .time{color: rgba(255, 255, 255, 0.4);}
-
-
-/*** MESSAGE COMPOSER ***/
-
-.message-composer {
-  display: flex;
-  align-items: center;
-  padding: 10px;
-  border-top: 1px solid #ddd;
-  background: white;
-}
-
-.message-composer input {
-  flex: 1;
-  padding: 10px 15px;
-  border-radius: 20px;
-  font-size: 15px;
-}
-
-.message-composer .icon {
-  width: 32px; height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 8px;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.message-composer .icon img{width: 20px; height: 20px; transition: .25s;}
-.icon.send{background-color: #845B92;}
-.icon.send:hover img{transform: translateX(1px) translateY(-1px) rotate(-385deg); transition: .5s;}
