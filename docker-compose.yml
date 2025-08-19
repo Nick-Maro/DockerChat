@@ -6,11 +6,10 @@ services:
       dockerfile: Dockerfile
     container_name: firewall
     restart: unless-stopped
-    volumes:
-      - ./firewall:/app
-      - shared_logs:/app/shared_logs
     ports:
       - "${FIREWALL_PORT}:${FIREWALL_PORT}"
+    volumes:
+      - shared_logs:/var/log/shared/firewall
     env_file:
       - .env
     networks:
@@ -21,20 +20,16 @@ services:
       context: ./reverse-proxy/
       dockerfile: Dockerfile
     container_name: reverse-proxy
-    volumes:
-      - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./client:/usr/share/nginx/html/client:ro
-      - shared_logs:/var/log/nginx
-    ports:
-      - "${REVERSE_PROXY_PORT}:${REVERSE_PROXY_PORT}"
+    restart: unless-stopped
+    depends_on:
+      - client
+      - server
     networks:
       - clients
       - servers
-    depends_on:
-      client:
-        condition: service_healthy
-      server:
-        condition: service_healthy
+    volumes:
+      - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - shared_logs:/var/log/shared/nginx
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${REVERSE_PROXY_PORT}"]
       interval: 30s
@@ -44,12 +39,13 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis_storage
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
-    volumes:
-      - redis_data:/data
-      - shared_logs:/var/log/redis
     networks:
       - servers
+    volumes:
+      - redis_data:/data
+      - shared_logs:/var/log/shared/redis
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 30s
@@ -60,16 +56,16 @@ services:
     build:
       context: ./backend-servers/server/
       dockerfile: Dockerfile
-    volumes:
-      - ./backend-servers/server:/app
-      - shared_logs:/app/shared_logs
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     expose:
       - ${SERVER_PORT}
     networks:
       - servers
-    depends_on:
-      redis:
-        condition: service_healthy
+    volumes:
+      - shared_logs:/var/log/shared/server
     env_file:
       - .env
     healthcheck:
@@ -83,10 +79,13 @@ services:
       context: ./client/
       dockerfile: Dockerfile
     container_name: client
+    restart: unless-stopped
     expose:
       - "${CLIENT_PORT}"
     networks:
       - clients
+    volumes:
+      - shared_logs:/var/log/shared/client
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${CLIENT_PORT}"]
       interval: 30s
@@ -98,12 +97,13 @@ services:
       context: ./client_terminal/
       dockerfile: Dockerfile
     container_name: client_terminal
-    volumes:
-      - ./client_terminal:/app
-    networks:
-      - clients
+    restart: unless-stopped
     depends_on:
       - firewall
+    networks:
+      - clients
+    volumes:
+      - ./client_terminal:/app
     stdin_open: true
     tty: true
     profiles:
@@ -114,20 +114,17 @@ services:
       context: ./dashboard/
       dockerfile: Dockerfile
     container_name: dashboard
-    volumes:
-      - ./dashboard:/app
-      - ./firewall:/app/logs/firewall:ro
-      - ./file-receiver:/app/logs/file-receiver:ro
-      - shared_logs:/app/shared_logs:ro
-      - redis_data:/app/redis_data:ro
+    restart: unless-stopped
+    depends_on:
+      - redis
     expose:
       - ${DASHBOARD_PORT}
     networks:
       - clients
       - servers
-    depends_on:
-      - firewall
-      - redis
+    volumes:
+      - redis_data:/app/redis_data:ro
+      - shared_logs:/var/log/shared/
     env_file:
       - .env
     healthcheck:
