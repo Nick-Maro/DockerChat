@@ -17,12 +17,6 @@ venv/
 private_key.pem
 public_key.pem
 
-file-receiver/uploads/*
-file-receiver/log.txt
-firewall/firewall.log
-honeypot/log.txt
-file-receiver/log.txt
-
 volumes/
 **/build/
 **/node_modules/
