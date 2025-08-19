@@ -146,24 +146,6 @@ services:
       timeout: 3s
       retries: 3
 
-  file-receiver:
-    build:
-      context: ./file-receiver/
-      dockerfile: Dockerfile
-    container_name: file-receiver
-    volumes:
-      - ./file-receiver:/app
-      - ./file-receiver/uploads:/app/uploads
-      - shared_logs:/app/shared_logs
-    networks:
-      - net
-    depends_on:
-      - firewall
-      - redis
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-
 
   dashboard:
     build:
@@ -182,7 +164,6 @@ services:
       - net
     depends_on:
       - firewall
-      - file-receiver
       - redis
     environment:
       - REDIS_HOST=redis
