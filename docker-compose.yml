@@ -1,44 +1,20 @@
-
 services:
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis_storage
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-      - shared_logs:/var/log/redis
-    networks:
-      - net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-
 
   firewall:
     build:
       context: ./firewall
       dockerfile: Dockerfile
     container_name: firewall
+    restart: unless-stopped
     volumes:
       - ./firewall:/app
       - shared_logs:/app/shared_logs
     ports:
       - "${FIREWALL_PORT}:${FIREWALL_PORT}"
+    env_file:
+      - .env
     networks:
-      - net
-    # depends_on:
-      # redis:
-        # condition: service_healthy
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - DASHBOARD_PORT=${DASHBOARD_PORT}
-      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-
+      - clients
 
   reverse-proxy:
     build:
@@ -49,20 +25,58 @@ services:
       - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./client:/usr/share/nginx/html/client:ro
       - shared_logs:/var/log/nginx
-    expose:
-      - "${REVERSE_PROXY_PORT}"
+    ports:
+      - "${REVERSE_PROXY_PORT}:${REVERSE_PROXY_PORT}"
     networks:
-      - net
+      - clients
+      - servers
     depends_on:
-      - client
-      - server1
-      - server2
+      client:
+        condition: service_healthy
+      server:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: ["CMD", "curl", "-f", "http://localhost:${REVERSE_PROXY_PORT}"]
       interval: 30s
       timeout: 3s
       retries: 3
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis_storage
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+      - shared_logs:/var/log/redis
+    networks:
+      - servers
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  server:
+    build:
+      context: ./backend-servers/server/
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend-servers/server:/app
+      - shared_logs:/app/shared_logs
+    expose:
+      - ${SERVER_PORT}
+    networks:
+      - servers
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SERVER_PORT}/status"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   client:
     build:
@@ -70,9 +84,14 @@ services:
       dockerfile: Dockerfile
     container_name: client
     expose:
-      - "80"
+      - "${CLIENT_PORT}"
     networks:
-      - net
+      - clients
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${CLIENT_PORT}"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   client_terminal:
     build:
@@ -82,70 +101,13 @@ services:
     volumes:
       - ./client_terminal:/app
     networks:
-      - net
+      - clients
     depends_on:
       - firewall
     stdin_open: true
     tty: true
     profiles:
       - client_terminal
-
-  server1:
-    build: 
-      context: ./backend-servers/server/
-      dockerfile: Dockerfile
-    container_name: server1
-    volumes:
-      - ./backend-servers/server:/app
-      - shared_logs:/app/shared_logs
-    expose:
-      - "5000"
-    networks:
-      - net
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - PORT=5000
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - SERVER_ID=server1
-      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/status"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-
-  server2:
-    build:
-      context: ./backend-servers/server/
-      dockerfile: Dockerfile
-    container_name: server2
-    volumes:
-      - ./backend-servers/server:/app
-      - shared_logs:/app/shared_logs
-    expose:
-      - "5000"
-    networks:
-      - net
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - PORT=5000
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - SERVER_ID=server2
-      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/status"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-
 
   dashboard:
     build:
@@ -159,35 +121,20 @@ services:
       - shared_logs:/app/shared_logs:ro
       - redis_data:/app/redis_data:ro
     expose:
-      - "80"
+      - ${DASHBOARD_PORT}
     networks:
-      - net
+      - clients
+      - servers
     depends_on:
       - firewall
       - redis
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-
-
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: redis-commander
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-      - HTTP_USER=${REDIS_COMMANDER_USER}
-      - HTTP_PASSWORD=${REDIS_COMMANDER_PASSWORD}
-    ports:
-      - "${REDIS_COMMANDER_PORT}:8081"
-    networks:
-      - net
-    depends_on:
-      redis:
-        condition: service_healthy
-    profiles:
-      - admin  # docker-compose --profile admin up
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${DASHBOARD_PORT}"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
 
 volumes:
@@ -197,8 +144,5 @@ volumes:
     driver: local
 
 networks:
-  net:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: ${NETWORK_SUBNET}
+  clients:
+  servers:
