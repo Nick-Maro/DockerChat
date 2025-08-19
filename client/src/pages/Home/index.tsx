@@ -6,20 +6,23 @@ import styles from './style.module.css';
 import dotsVerticalWhite from '../../assets/icons/dots-vertical-white.svg';
 import { RoomList } from '../../components/RoomList';
 import { useChat } from '../../shared/chatContext';
+import { useClient } from '../../shared/authContext';
 
 
 export function Home(){
 	const { currentRoom } = useChat();
+	const { username } = useClient();
 	const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+	const myUsername = username ? capitalize(username) : 'Guest'
 
 	return (
 		<div className={`${styles.home} flex row`}>
 
 			<section className={styles.sidebar}>
 				<div className={`${styles.profile} flex`}>
-					<img src="https://avatar.iran.liara.run/public/girl?username=Jolene" alt="pfp" />
+					<img src={`https://avatar.iran.liara.run/public?username=${myUsername}`} alt="pfp" />
 					<div className={`${styles.name} center-flex column`}>
-						<h2>Jolene Shaw</h2>
+						<h2>{myUsername}</h2>
 						<p>My Account</p>
 					</div>
 					<img className={styles.dots} src={dotsVerticalWhite} alt="settings" />
