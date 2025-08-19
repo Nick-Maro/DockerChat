@@ -13,10 +13,9 @@ load_dotenv(dotenv_path)
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
-FIREWALL_RULES_PATH = "/app/logs/firewall/rules.json"
-FIREWALL_LOG_PATH = "/app/logs/firewall/firewall.log"
-HONEYPOT_LOG_PATH = "/app/logs/honeypot/log.txt"
-FILE_RECEIVER_LOG_PATH = "/app/logs/file-receiver/log.txt"
+FIREWALL_RULES_PATH = "/var/log/shared/firewall/rules.json"
+FIREWALL_LOG_PATH = "/var/log/shared/firewall/firewall.log"
+os.makedirs(os.path.dirname(FIREWALL_LOG_PATH), exist_ok=True)
 
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
@@ -66,12 +65,7 @@ def firewall():
 @app.route("/logs")
 def logs():
     firewall_log = read_file(FIREWALL_LOG_PATH)
-    honeypot_log = read_file(HONEYPOT_LOG_PATH)
-    receiver_log = read_file(FILE_RECEIVER_LOG_PATH)
-    return render_template("logs.html",
-                          firewall_log=firewall_log,
-                          honeypot_log=honeypot_log,
-                          receiver_log=receiver_log)
+    return render_template("logs.html", firewall_log=firewall_log)
 
 @app.route("/stats")
 def stats():
@@ -177,16 +171,12 @@ def debug():
         "current_directory": os.getcwd(),
         "firewall_rules_exists": os.path.exists(FIREWALL_RULES_PATH),
         "firewall_log_exists": os.path.exists(FIREWALL_LOG_PATH),
-        "honeypot_log_exists": os.path.exists(HONEYPOT_LOG_PATH),
-        "file_receiver_log_exists": os.path.exists(FILE_RECEIVER_LOG_PATH),
         "redis_available": REDIS_AVAILABLE,
     }
     
     for path_name, path in [
         ("firewall_rules", FIREWALL_RULES_PATH),
         ("firewall_log", FIREWALL_LOG_PATH),
-        ("honeypot_log", HONEYPOT_LOG_PATH),
-        ("file_receiver_log", FILE_RECEIVER_LOG_PATH)
     ]:
         debug_info[f"{path_name}_readable"] = os.access(path, os.R_OK) if os.path.exists(path) else False
         debug_info[f"{path_name}_size"] = str(os.path.getsize(path) if os.path.exists(path) else 0)
@@ -275,13 +265,12 @@ def read_file(path):
             return f"Encoding error for {path}: {str(e)}"
     except Exception as e:
         return f"File read error {path}: {str(e)}"
+    
 
 if __name__ == "__main__":
     print(f"Dashboard starting...")
     print(f"Firewall rules path: {FIREWALL_RULES_PATH}")
     print(f"Firewall log path: {FIREWALL_LOG_PATH}")
-    print(f"Honeypot log path: {HONEYPOT_LOG_PATH}")
-    print(f"File receiver log path: {FILE_RECEIVER_LOG_PATH}")
     print(f"Redis available: {REDIS_AVAILABLE}")
-    
+
     app.run(host="0.0.0.0", port=80, debug=True)
