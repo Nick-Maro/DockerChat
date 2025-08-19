@@ -11,8 +11,6 @@ __pycache__/
 *.egg-info/
 venv/
 .venv/
-ENV/
-.env
 .idea/
 .vscode/
 
@@ -26,8 +24,8 @@ honeypot/log.txt
 file-receiver/log.txt
 
 volumes/
-dashboard/build/
-dashboard/node_modules/
+**/build/
+**/node_modules/
 
 # MacOS
 **/.DS_Store
