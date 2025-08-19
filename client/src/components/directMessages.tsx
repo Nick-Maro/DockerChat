@@ -10,7 +10,7 @@ export default function DirectMessages(){
         <div className={styles.dm}>
             <h2>Direct Messages</h2>
             <ul className="flex column">
-                {!clients ? ( 
+                {!clients || clients.length === 0 ? ( 
                     <p>No users yet.</p>
                 ) : clients.map((client, index) => { return (
                     <li className={styles.active} key={client.client_id}>
