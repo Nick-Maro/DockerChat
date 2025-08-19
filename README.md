@@ -1,13 +1,11 @@
 # Network Security Infrastructure Project
-
 A comprehensive Docker-based network security infrastructure implementing multiple security layers and monitoring capabilities.
+
 # License
-
 This project is licensed under the MIT License - see the LICENSE file for details.
+
 ## Architecture Overview
-
 This project implements a complete network security infrastructure with the following components:
-
 - **NGINX Reverse Proxy**: Load balances requests between two backend servers
 - **Backend Servers**: Two TypeScript Bun servers (server1 & server2) handling requests
 - **Programmable Firewall**: Custom rule-based traffic filtering
@@ -17,37 +15,30 @@ This project implements a complete network security infrastructure with the foll
 - **Web-client**: Web client for sending files and messages (in development)
 The system supports HTTP communication for text messages and uses Docker Compose for container orchestration with bridge networking.
 
-![Network Graph](Graph.png)
-## Prerequisites
+![Network Graph](graph.jpg)
 
+## Prerequisites
 - **Docker**: >= 20.x
 - **Docker Compose**: >= 1.29.x  
 - **Python**: >= 3.8 (for manual client execution)
 
 ## Quick Start
-
 ### 1. Clone and Setup
-
 ```bash
 git clone https://github.com/Nick-Maro/docker-mini-network
 cd docker-mini-network
 ```
 
 ### 2. Build and Deploy
-
 ```bash
-# Build all containers
-docker compose build
-
-# Start services in background
-docker compose up -d
+# Build and start all containers in background
+docker compose up --build -d
 
 # Verify all containers are running
 docker compose ps
 ```
 
 ### 3. Test the Setup
-
 ```bash
 # Test backend connectivity
 curl -X POST http://127.0.0.1:5001/command -H "Content-Type: application/json" -d "{\"command\":\"ciao\"}"
