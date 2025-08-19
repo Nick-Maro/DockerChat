@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # build serving with http-server
-FROM node:20-slim AS serve
+FROM node:20-alpine AS serve
 WORKDIR /app
 RUN npm install -g http-server
 COPY --from=build /app/dist/ /app
