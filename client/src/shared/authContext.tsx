@@ -1,6 +1,6 @@
 import { createContext, ComponentChildren } from 'preact';
 import { useContext, useState, useEffect } from 'preact/hooks';
-import { getOrCreatePublicKey } from './utils';
+import {getOrCreatePublicKey, sendAuthenticatedMessage} from './utils';
 import { useSocket } from './webSocketContext';
 import { ClientContextType } from '../types';
 
@@ -22,13 +22,15 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
         const uname = prompt("Inserisci un username (3-16, lettere/numeri/_-):")?.trim();
         if(uname){
           localStorage.setItem('username', uname);
-          sendMessage({ command: `upload_public_key:${uname}`, public_key: publicKey });
+          sendMessage({ command: `upload_public_key`, username: uname, public_key: publicKey });
         }
         return;
       }
 
       setUsername(savedUsername);
-      sendMessage({ command: 'heartbeat', client_id: savedUsername });
+      (async () => {
+              await sendAuthenticatedMessage(sendMessage, { command: `heartbeat`, client_id: username });
+      })();
     })();
   }, [status, sendMessage]);
 
@@ -64,7 +66,9 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
   useEffect(() => {
     if(!username || status !== 'open') return;
     const t = setInterval(() => {
-      sendMessage({ command: 'heartbeat', client_id: username });
+      (async() => {
+        await sendAuthenticatedMessage(sendMessage, {command: 'heartbeat', client_id: username});
+      })();
     }, 30_000);
     return () => clearInterval(t);
   }, [username, status, sendMessage]);
