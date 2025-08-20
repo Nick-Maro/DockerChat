@@ -202,6 +202,7 @@ export class CommandHandler {
                     response.error = "Invalid room name";
                     break;
                 }
+                wsClientMap.set(client_id, ws);
                 await this.joinRoom(client_id, currentClient, room_name);
                 const roomClients = await this.dataManager.getRoomClients(room_name);
                 for (const otherClientId of roomClients) {
