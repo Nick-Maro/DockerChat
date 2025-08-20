@@ -1,4 +1,5 @@
 export interface Client {
+    id: string,
     public_key: string;
     room_id: string | null;
     last_seen: string;
@@ -84,7 +85,6 @@ export interface WSResponse {
     };
 }
 
-
 export interface ServerStatus {
     server_instance: string;
     redis_available: boolean;
@@ -104,4 +104,10 @@ export interface ServerStatus {
             last_activity: string;
         };
     };
+}
+
+export interface WebSocketData {
+    wsId: string;
+    clientId: string | null;
+    authenticated: boolean;
 }

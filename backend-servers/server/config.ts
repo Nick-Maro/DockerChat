@@ -9,6 +9,11 @@ export const CONFIG = {
     MESSAGE_TTL: 86400, // 24h
     DEBUG: process.env.DEBUG || false,
 
+    METRICS: {
+        ENABLED: true,
+        INTERVAL: 36000,
+    },
+
     SERVER: {
         PORT: process.env.PORT ? parseInt(process.env.PORT) : 5000,
         HOST: process.env.HOST || '0.0.0.0'
