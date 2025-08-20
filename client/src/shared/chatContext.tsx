@@ -3,6 +3,7 @@ import { useContext, useState, useEffect, useRef } from "preact/hooks";
 import { useClient } from "./authContext";
 import { useSocket } from "./webSocketContext";
 import { Room, ChatContextType, Message, Client } from "../types";
+import {sendAuthenticatedMessage} from "./utils";
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
@@ -23,8 +24,10 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   useEffect(() => {
     if(status === "open" && username && !hasInitialized.current) {
       hasInitialized.current = true;
-      sendMessage({ command: "list_rooms", client_id: username });
-      sendMessage({ command: "list_clients", client_id: username });
+      const init = async () => {
+        await sendAuthenticatedMessage(sendMessage, { command: "list_rooms", client_id: username });
+        await sendAuthenticatedMessage(sendMessage, { command: "list_clients", client_id: username });
+      };
     }
   }, [status, username]);
 
@@ -84,7 +87,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
             setRoomMessages([]);
             sentMessages.current.clear();
             processedMessages.current.clear();
-            sendMessage({ command: "get_messages", client_id: username });
+            (async () => {
+                    await sendAuthenticatedMessage(sendMessage, { command: `get_messages`, client_id: username });
+            })();
           }
         }
       }
@@ -97,14 +102,18 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const joinRoom = (roomName: string) => {
     if(username && status === "open") {
       if(currentRoom && currentRoom.name !== roomName) {
-        sendMessage({ command: "leave_room", client_id: username });
+      (async () => {
+              await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username });
+      })();
         setCurrentRoom(null);
         setRoomMessages([]);
         sentMessages.current.clear();
         processedMessages.current.clear();
       }
       
-      sendMessage({ command: `join_room:${roomName}`, client_id: username });
+      (async () => {
+              await sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username });
+      })();
       
       const room = rooms.find(r => r.name === roomName);
       if(room) {
@@ -123,7 +132,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       sentMessages.current.clear();
       processedMessages.current.clear();
       
-      sendMessage({ command: "leave_room", client_id: username });
+      (async () => {
+              await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username });
+      })();
     }
   };
 
@@ -138,7 +149,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       };
       
       setRooms(prev => [...prev, newRoom]);
-      sendMessage({ command: `create_room:${roomName}`, client_id: username });
+      (async () => {
+              await sendAuthenticatedMessage(sendMessage, { command: `create_room:${roomName}`, client_id: username });
+      })();
       setCurrentRoom(newRoom);
       setRoomMessages([]);
     }
@@ -156,7 +169,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       const messageKey = `${username}:${text}:${newMessage.timestamp}`;
       sentMessages.current.add(messageKey);
       setRoomMessages(prev => [...prev, newMessage]);
-      sendMessage({ command: `send_message:${text}`, client_id: username });
+      (async() => {
+        await sendAuthenticatedMessage(sendMessage, { command: `send_message:${text}`, client_id: username });
+      })();
     }
   };
 
