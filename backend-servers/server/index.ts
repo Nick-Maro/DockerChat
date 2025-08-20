@@ -3,12 +3,8 @@ import { storage } from "./storage";
 import { DataManager } from "./dataManager";
 import { CommandHandler } from "./commandHandler";
 import { CONFIG } from "./config";
-import { isExpired, generateUUID, printDebug } from "./utils";
-import type { ServerStatus } from './types';
-
-type WebSocketData = {
-    clientId: string | null;
-};
+import { isExpired, generateUUID, printDebug } from "./utils/utils.ts";
+import type { ServerStatus , WebSocketData} from './types';
 
 await storage.initialize();
 const dataManager = new DataManager();
@@ -34,12 +30,16 @@ const websocket: WebSocketHandler<WebSocketData> = {
         printDebug(`[WS] Connection closed: ${code} ${reason}`);
         const clientId = ws.data.clientId;
         if (clientId) wsClientMap.delete(clientId);
-    }
+    },
 };
 
 const server: Server = Bun.serve({
     port: CONFIG.SERVER.PORT,
     hostname: CONFIG.SERVER.HOST,
+    /*tls: {
+        key: Bun.file("./key.pem"),
+        cert: Bun.file("./cert.pem"),
+    },*/
 
     async fetch(req, server) {
         const url = new URL(req.url);
@@ -82,7 +82,11 @@ const server: Server = Bun.serve({
         }
 
         const success = server.upgrade(req, {
-            data: { clientId: null }
+            data: {
+                wsId: generateUUID(),
+                clientId: null,
+                authenticated: false
+            }
         });
         if (success) return;
         return new Response("Not Found", { status: 404 });

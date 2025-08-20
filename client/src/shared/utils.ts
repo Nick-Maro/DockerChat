@@ -1,25 +1,80 @@
-export async function generatePublicKey(): Promise<string> {
+export async function generateKeyPair(): Promise<{ publicKeyPem: string, privateKey: CryptoKey }> {
     const keyPair = await crypto.subtle.generateKey(
         {
-            name: "RSA-OAEP",
+            name: "RSASSA-PKCS1-v1_5",
             modulusLength: 2048,
             publicExponent: new Uint8Array([1, 0, 1]),
             hash: "SHA-256",
         },
         true,
-        ["encrypt", "decrypt"]
+        ["sign", "verify"]
     );
 
     const exported = await crypto.subtle.exportKey("spki", keyPair.publicKey);
-    return btoa(String.fromCharCode(...new Uint8Array(exported)));
+    const exportedAsBase64 = btoa(String.fromCharCode(...new Uint8Array(exported)));
+    const pem = `-----BEGIN PUBLIC KEY-----\n${exportedAsBase64.match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----`;
+
+    const exportedPriv = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+    const privBase64 = btoa(String.fromCharCode(...new Uint8Array(exportedPriv)));
+    localStorage.setItem("private_key", privBase64);
+    return { publicKeyPem: pem, privateKey: keyPair.privateKey };
+}
+
+export async function signMessage(privateKey: CryptoKey, message: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const dataToSign = encoder.encode(message); // <-- Sign the raw string
+
+    const signature = await crypto.subtle.sign(
+        { name: "RSASSA-PKCS1-v1_5" },
+        privateKey,
+        dataToSign
+    );
+
+    return btoa(String.fromCharCode(...new Uint8Array(signature)));
 }
 
 export async function getOrCreatePublicKey(): Promise<string> {
-  const cached = localStorage.getItem('public_key');
-  if(cached) return cached;
-  const pub = await generatePublicKey();
-  localStorage.setItem('public_key', pub);
-  return pub;
+  const cachedPublic = localStorage.getItem('public_key');
+  if (cachedPublic) return cachedPublic;
+  const { publicKeyPem, privateKey } = await generateKeyPair();
+  localStorage.setItem('public_key', publicKeyPem);
+  return publicKeyPem;
+}
+
+export async function sendAuthenticatedMessage(sendMessage: (msg: any) => void, message: any) {
+    const privateKey = await getPrivateKey();
+    if (!privateKey) {
+        console.error("Cannot send authenticated message: Private key is missing.");
+        return;
+    }
+    const { command, client_id, ...extraData } = message;
+    const nonce = crypto.randomUUID();
+    const timestamp = Date.now();
+    const dataToSign = `${command}|${client_id}|${nonce}|${timestamp}`;
+    const signature = await signMessage(privateKey, dataToSign);
+    const finalMessage = {
+        command,
+        client_id,
+        nonce,
+        timestamp,
+        signature,
+        ...extraData
+    };
+    sendMessage(finalMessage);
+}
+
+export async function getPrivateKey(): Promise<CryptoKey | null> {
+    const privBase64 = localStorage.getItem("private_key");
+    if (!privBase64) return null;
+    const privBuffer = Uint8Array.from(atob(privBase64), c => c.charCodeAt(0));
+
+    return await crypto.subtle.importKey(
+        "pkcs8",
+        privBuffer,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        true,
+        ["sign"]
+    );
 }
 
 export function formatDateTime(dateStr: string): string {
