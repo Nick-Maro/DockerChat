@@ -82,7 +82,7 @@ export class CommandHandler {
             return;
         }
 
-        const authResult = await AuthenticationMiddleware.authenticate(
+        let authResult = await AuthenticationMiddleware.authenticate(
             data,
             ws.data.clientId || '',
             async (clientId: string) => {
@@ -90,6 +90,18 @@ export class CommandHandler {
                 return client?.public_key || null;
             }
         );
+        if(!authResult.success && authResult.error === 'Client ID mismatch with WebSocket session') {
+            if(typeof data.client_id === 'string'){
+                const publicKey = await this.dataManager.getClient(data.client_id).then(c => c?.public_key || null);
+                if(publicKey){
+                    const verify = CryptoAuth.verifyMessage(data, data.client_id, publicKey);
+                    if(verify.valid){
+                        ws.data.clientId = data.client_id;
+                        authResult = { success: true, clientId: data.client_id };
+                    }
+                }
+            }
+        }
         if(!authResult.success) {
             this.sendResponse(ws, {
                 command: data.command,

@@ -17,20 +17,17 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     (async () => {
       const savedUsername = localStorage.getItem('username');
       const publicKey = await getOrCreatePublicKey();
-
       if(!savedUsername){
         const uname = prompt("Inserisci un username (3-16, lettere/numeri/_-):")?.trim();
         if(uname){
           localStorage.setItem('username', uname);
-          sendMessage({ command: `upload_public_key`, username: uname, public_key: publicKey });
+          sendMessage({ command: "upload_public_key", username: uname, public_key: publicKey });
+          setUsername(uname);
         }
         return;
       }
-
       setUsername(savedUsername);
-      (async () => {
-              await sendAuthenticatedMessage(sendMessage, { command: `heartbeat`, client_id: username });
-      })();
+      sendAuthenticatedMessage(sendMessage, { command: "heartbeat", client_id: savedUsername });
     })();
   }, [status, sendMessage]);
 

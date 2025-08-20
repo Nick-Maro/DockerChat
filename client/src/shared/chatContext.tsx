@@ -28,6 +28,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         await sendAuthenticatedMessage(sendMessage, { command: "list_rooms", client_id: username });
         await sendAuthenticatedMessage(sendMessage, { command: "list_clients", client_id: username });
       };
+      init();
     }
   }, [status, username]);
 
