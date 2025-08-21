@@ -4,6 +4,7 @@ export interface Client {
     room_id: string | null;
     last_seen: string;
     created_at: string;
+    online?: boolean;
 }
 
 export interface ClientInRoom {

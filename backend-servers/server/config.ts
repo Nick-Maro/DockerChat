@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export const CONFIG = {
-    CLIENT_TTL: 3600, // 1h
+    CLIENT_TTL: 35, // 35s
     ROOM_TTL: 7200, // 2h
     MESSAGE_TTL: 86400, // 24h
     DEBUG: process.env.DEBUG || false,

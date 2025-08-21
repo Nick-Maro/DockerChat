@@ -93,7 +93,7 @@ class Storage {
             }
         } else {
             if (this.localClients.has(clientId)) return false;
-            this.localClients.set(clientId, client);
+            this.localClients.set(clientId, this.normalizeClient(client));
             return true;
         }
     }
@@ -103,19 +103,26 @@ class Storage {
         if (this.redis) {
             try {
                 const pipeline = this.redis.multi();
-                pipeline.set(this.REDIS_KEYS.CLIENT(clientId), JSON.stringify(client));
+                const normalized = this.normalizeClient(client);
+                pipeline.set(this.REDIS_KEYS.CLIENT(clientId), JSON.stringify(normalized));
                 if (client.room_id) pipeline.sAdd(this.REDIS_KEYS.CLIENT_ROOM_INDEX(client.room_id), clientId);
                 await pipeline.exec();
-                this.clientCache.set(clientId, { data: client, timestamp: Date.now() });
+                this.clientCache.set(clientId, { data: normalized, timestamp: Date.now() });
             } catch (error) {
                 this.clientCache.delete(clientId);
                 console.error(`[ERROR] Failed to update Redis client: ${error}`);
                 throw error;
             }
         } else {
-            this.localClients.set(clientId, client);
-            this.clientCache.set(clientId, { data: client, timestamp: Date.now() });
+            const normalized = this.normalizeClient(client);
+            this.localClients.set(clientId, normalized);
+            this.clientCache.set(clientId, { data: normalized, timestamp: Date.now() });
         }
+    }
+
+    private normalizeClient(client: Client): Client {
+        if(typeof client.online === 'undefined') client.online = true;
+        return client;
     }
 
     async getRoom(roomId: string): Promise<Room | null> {
@@ -325,20 +332,41 @@ class Storage {
         if (clientIds.length === 0) return;
         for (const clientId of clientIds) {
             this.clientCache.delete(clientId);
-            this.localClients.delete(clientId);
+            const local = this.localClients.get(clientId);
+            if(local){
+                local.online = false;
+                this.localClients.set(clientId, local);
+            }
         }
         if (this.redis) {
             try {
-                const pipeline = this.redis.multi();
-                for (const clientId of clientIds) {
-                    pipeline.del(this.REDIS_KEYS.CLIENT(clientId));
+                const clientKeys = clientIds.map(id => this.REDIS_KEYS.CLIENT(id));
+                const clientsData = await this.redis.mGet(clientKeys);
+                const setPipeline = this.redis.multi();
+                for (let i = 0; i < clientIds.length; i++) {
+                    const clientJson = clientsData[i];
+                    if(clientJson){
+                        try{
+                            const client = JSON.parse(clientJson as string) as Client;
+                            client.online = false;
+                            setPipeline.set(clientKeys[i], JSON.stringify(client));
+                        }
+                        catch(err){ }
+                    }
                 }
-                await pipeline.exec();
-            } catch (error) {
-                console.error(`[ERROR] Failed to batch delete clients: ${error}`);
-            }
+                await setPipeline.exec();
+                }
+                catch(error){ console.error(`[ERROR] Failed to update clients online status in batch: ${error}`); }
         }
     }
+
+        async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
+            const client = await this.getClient(clientId);
+            if(!client) return;
+            client.online = online;
+            if(touchLastSeen) client.last_seen = new Date().toISOString();
+            await this.setClient(clientId, client);
+        }
 
     async getClients(): Promise<{ [clientId: string]: Client }> {
         const result: { [clientId: string]: Client } = {};

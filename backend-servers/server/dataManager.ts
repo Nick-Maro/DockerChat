@@ -26,11 +26,16 @@ export class DataManager {
             for (const clientId of expiredClientIds) {
                 const client = await storage.getClient(clientId);
                 if (client?.room_id) await this.removeClientFromRoom(clientId, client.room_id);
+                await storage.setClientOnline(clientId, false, false);
             }
-            await storage.batchDeleteClients(expiredClientIds);
+            /* await storage.batchDeleteClients(expiredClientIds); */
         }
         await this.cleanExpiredRooms();
         await this.cleanExpiredMessages();
+    }
+
+    async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
+        return storage.setClientOnline(clientId, online, touchLastSeen);
     }
 
     private async cleanExpiredRooms(): Promise<void> {
@@ -191,9 +196,7 @@ export class DataManager {
     async getActiveClientsCount(): Promise<number> {
         const clients = await storage.getClients();
         let count = 0;
-        for (const client of Object.values(clients)) {
-            if (!isExpired(client.last_seen, CONFIG.CLIENT_TTL)) count++;
-        }
+        for(const client of Object.values(clients)){ if(client.online) count++; }
         return count;
     }
 

@@ -63,6 +63,8 @@ export class CommandHandler {
                 return;
             }
 
+            await this.dataManager.setClientOnline(username, true, true);
+
             ws.data.clientId = username;
             wsClientMap.set(username, ws);
             SecureSession.bindSession(ws.data.wsId, username, data.public_key);
@@ -335,7 +337,7 @@ export class CommandHandler {
                         client_id: cid,
                         room_id: c_data.room_id,
                         last_seen: c_data.last_seen,
-                        online: !isExpired(c_data.last_seen, CONFIG.CLIENT_TTL)
+                        online: !!c_data.online
                     }));
                 response = {
                     ...response,
@@ -373,6 +375,7 @@ export class CommandHandler {
                 break;
             }
             case command === "heartbeat": {
+                await this.dataManager.setClientOnline(client_id, true, true);
                 response = {
                     ...response,
                     message: "Heartbeat received",
