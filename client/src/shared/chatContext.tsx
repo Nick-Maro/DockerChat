@@ -175,7 +175,42 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       })();
     }
   };
+const sendFileToRoom = async (file: File) => {
+  if(username && currentRoom && status === "open") {
+    
+    const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(f); 
+    });
 
+    const base64 = await toBase64(file);
+
+    const newMessage: Message = {
+      from_client: username,
+      timestamp: new Date().toISOString(),
+      public_key: "",
+      file: true,
+      filename: file.name,
+      mimetype: file.type,
+      content: base64
+    };
+
+    const messageKey = `${username}:${file.name}:${newMessage.timestamp}`;
+    sentMessages.current.add(messageKey);
+    setRoomMessages(prev => [...prev, newMessage]);
+
+    await sendAuthenticatedMessage(sendMessage, { 
+      command: `send_message:${file.name}`, 
+      client_id: username,
+      file: true,
+      filename: file.name,
+      mimetype: file.type,
+      content: base64
+    });
+  }
+};
   return (
     <ChatContext.Provider value={{ 
       rooms, 
@@ -185,7 +220,8 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       joinRoom, 
       leaveRoom, 
       createRoom, 
-      sendMessage: sendMessageToRoom 
+      sendMessage: sendMessageToRoom,
+      sendFile: sendFileToRoom
     }}>
       {children}
     </ChatContext.Provider>
