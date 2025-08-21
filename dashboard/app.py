@@ -190,8 +190,7 @@ def debug():
     return render_template('debug.html', debug_info=debug_info)
 
 def get_redis_data():
-    if not REDIS_AVAILABLE:
-        return {}
+    if not REDIS_AVAILABLE: return {}
 
     def fetch_json(key):
         try:
@@ -200,10 +199,27 @@ def get_redis_data():
         except (RedisError, json.JSONDecodeError):
             return {}
 
+    # clients
+    clients_keys = redis_client.keys("client:*")
+    clients = {key.split("client:")[1]: fetch_json(key) for key in clients_keys}
+
+    # rooms
+    rooms_keys = redis_client.keys("room:*")
+    rooms = {key.split("room:")[1]: fetch_json(key) for key in rooms_keys}
+
+    # private messages
+    pm_keys = redis_client.keys("pm:*")
+    private_messages = {key: fetch_json(key) for key in pm_keys}
+
+    # user messages
+    user_messages_keys = redis_client.keys("user_messages:*")
+    user_messages = {key.split("user_messages:")[1]: fetch_json(key) for key in user_messages_keys}
+
     return {
-        'clients': fetch_json('clients'),
-        'rooms': fetch_json('rooms'),
-        'private_messages': fetch_json('private_messages'),
+        'clients': clients,
+        'rooms': rooms,
+        'private_messages': private_messages,
+        'user_messages': user_messages
     }
 
 def get_redis_stats():
