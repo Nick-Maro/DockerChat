@@ -14,7 +14,8 @@ export class AuthenticationMiddleware {
         const publicKey = await getClientPublicKey(message.client_id);
         if (!publicKey) return { success: false, error: 'Client not registered or public key not found' };
 
-        const authResult = CryptoAuth.verifyMessage(message, wsClientId, publicKey);
+        const expectedClientId = wsClientId || message.client_id;
+        const authResult = CryptoAuth.verifyMessage(message, expectedClientId, publicKey);
         if (!authResult.valid) return { success: false, error: authResult.error };
 
         return { success: true, clientId: message.client_id };
