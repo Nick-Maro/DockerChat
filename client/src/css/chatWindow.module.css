@@ -57,3 +57,30 @@
 .messageComposer .icon.attach:hover{background-color: #2d2d2d; transition: .15s;}
 .messageComposer .icon.send{background-color: #8775E9;}
 .messageComposer .icon.send:hover img{transform: translateX(1px) translateY(-1px) rotate(-385deg); transition: .5s;}
+
+
+/*** Messages ***/
+
+.dragOverlay{
+  width: calc(100dvw - 30px); height: calc(100dvh - 30px);
+  position: absolute;
+  top: 0; left: 0;
+  margin: 15px;
+  border-radius: 15px;
+  border: 5px dashed var(--primary-color);
+  background-color: rgba(30,30,30,0.9);
+  z-index: 10;
+}
+.dragOverlay h3{font-size: 25px; text-transform: uppercase;}
+
+.imageMessage img{
+  position: relative;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  cursor: pointer;
+  object-fit: cover;
+}
+
+.fileMessage{gap: 5px;}
+.messageText{word-break: break-word;}

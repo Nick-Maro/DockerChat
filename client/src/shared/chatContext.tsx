@@ -41,7 +41,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     newMessages.forEach(message => {
       const messageId = JSON.stringify(message);
       
-      if (processedMessages.current.has(messageId)) return;
+      if(processedMessages.current.has(messageId)) return;
       processedMessages.current.add(messageId);
       
       console.log('WebSocket response received:', message);
@@ -78,9 +78,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         }
         else if(message.room_name){
           setRooms(prev => prev.map(r => 
-            r.name === message.room_name 
-              ? { ...r, clients: message.clients_in_room || 1 }
-              : r
+            r.name === message.room_name ? { ...r, clients: message.clients_in_room || 1 } : r
           ));
         }
       }
@@ -97,9 +95,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
             setRoomMessages([]);
             sentMessages.current.clear();
             processedMessages.current.clear();
-            (async () => {
-                    await sendAuthenticatedMessage(sendMessage, { command: `get_messages`, client_id: username });
-            })();
+            (async () => { await sendAuthenticatedMessage(sendMessage, { command: `get_messages`, client_id: username }); })();
           }
         }
       }
@@ -112,21 +108,17 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const joinRoom = (roomName: string) => {
     if(username && status === "open") {
       if(currentRoom && currentRoom.name !== roomName) {
-      (async () => {
-              await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username });
-      })();
+      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
         setCurrentRoom(null);
         setRoomMessages([]);
         sentMessages.current.clear();
         processedMessages.current.clear();
       }
       
-      (async () => {
-              await sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username });
-      })();
+      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username }); })();
       
       const room = rooms.find(r => r.name === roomName);
-      if(room) {
+      if(room){
         setCurrentRoom(room);
         setRoomMessages([]);
         sentMessages.current.clear();
@@ -142,9 +134,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       sentMessages.current.clear();
       processedMessages.current.clear();
       
-      (async () => {
-              await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username });
-      })();
+      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
     }
   };
 
@@ -159,9 +149,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       };
       
       setRooms(prev => [...prev, newRoom]);
-      (async () => {
-              await sendAuthenticatedMessage(sendMessage, { command: `create_room:${roomName}`, client_id: username });
-      })();
+      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `create_room:${roomName}`, client_id: username }); })();
       setCurrentRoom(newRoom);
       setRoomMessages([]);
     }
@@ -184,42 +172,45 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       })();
     }
   };
-const sendFileToRoom = async (file: File) => {
-  if(username && currentRoom && status === "open") {
-    
-    const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(f); 
-    });
 
-    const base64 = await toBase64(file);
+  const sendFileToRoom = async (file: File) => {
+    if(username && currentRoom && status === "open"){
+      
+      const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(f); 
+      });
 
-    const newMessage: Message = {
-      from_client: username,
-      timestamp: new Date().toISOString(),
-      public_key: "",
-      file: true,
-      filename: file.name,
-      mimetype: file.type,
-      content: base64
-    };
+      const base64 = await toBase64(file);
 
-    const messageKey = `${username}:${file.name}:${newMessage.timestamp}`;
-    sentMessages.current.add(messageKey);
-    setRoomMessages(prev => [...prev, newMessage]);
+      const newMessage: Message = {
+        from_client: username,
+        timestamp: new Date().toISOString(),
+        public_key: "",
+        text: file.name,
+        file: true,
+        filename: file.name,
+        mimetype: file.type,
+        content: base64
+      };
 
-    await sendAuthenticatedMessage(sendMessage, { 
-      command: `send_message:${file.name}`, 
-      client_id: username,
-      file: true,
-      filename: file.name,
-      mimetype: file.type,
-      content: base64
-    });
-  }
-};
+      const messageKey = `${username}:${file.name}:${newMessage.timestamp}`;
+      sentMessages.current.add(messageKey);
+      setRoomMessages(prev => [...prev, newMessage]);
+
+      await sendAuthenticatedMessage(sendMessage, { 
+        command: `send_message:${file.name}`, 
+        client_id: username,
+        file: true,
+        filename: file.name,
+        mimetype: file.type,
+        content: base64
+      });
+    }
+  };
+
   return (
     <ChatContext.Provider value={{ 
       rooms, 
