@@ -50,14 +50,23 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       else if(message.command === "list_clients") setClients(message.clients || []);
       else if(message.command === "get_messages") setRoomMessages(message.messages || []);
       else if(message.event === "room_message_received") {
-        const messageKey = `${message.from}:${message.text}:${message.timestamp}`;
+        const messageKey = message.file 
+          ? `${message.from}:${message.filename}:${message.timestamp}:file`
+          : `${message.from}:${message.text}:${message.timestamp}`;
+        
         if(!sentMessages.current.has(messageKey)){
-          setRoomMessages(prev => [...prev, {
+          const newMessage = {
             from_client: message.from,
-            text: message.text,
+            text: message.text || (message.file ? message.filename : ''),
             timestamp: message.timestamp,
-            public_key: ""
-          }]);
+            public_key: "",
+            file: message.file || false,
+            filename: message.filename,
+            mimetype: message.mimetype,
+            content: message.content
+          };
+          
+          setRoomMessages(prev => [...prev, newMessage]);
         }
       }
       else if(message.command && message.command.startsWith("create_room:")){

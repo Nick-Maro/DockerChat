@@ -232,7 +232,10 @@ case command.startsWith("send_message:"): {
     }
     const room_id = currentClient.room_id;
     if (room_id) {
-        const isFile = data?.file === true; 
+        const isFile = data?.file === true;
+        const filename = data?.filename;
+        const mimetype = data?.mimetype; 
+        const content = data?.content;
 
         await this.dataManager.addMessageToRoom(room_id, {
             from_client: clientId,
@@ -241,7 +244,10 @@ case command.startsWith("send_message:"): {
             timestamp: getCurrentISOString(),
             public_key: currentClient.public_key,
             verified: true,
-            file: isFile 
+            file: isFile,
+            filename: filename,
+            mimetype: mimetype,
+            content: content
         });
 
         const roomClients = await this.dataManager.getRoomClients(room_id);
@@ -249,14 +255,26 @@ case command.startsWith("send_message:"): {
             if (otherClientId === client_id) continue;
             const otherWs = wsClientMap.get(otherClientId);
             if (!otherWs) continue;
-            otherWs.send(JSON.stringify({
+            
+
+            const messageData = {
                 event: 'room_message_received',
                 from: client_id,
-                text: message_text,
                 timestamp: getCurrentISOString(),
-                file: isFile 
-            }));
+                text: message_text,
+                file: isFile
+            };
+            
+
+            if (isFile) {
+                messageData.filename = filename;
+                messageData.mimetype = mimetype;
+                messageData.content = content;
+            }
+            
+            otherWs.send(JSON.stringify(messageData));
         }
+        
         response = {
             ...response,
             message: `Message sent in room '${room_id}'`,

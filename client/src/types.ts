@@ -71,11 +71,13 @@ export interface PrivateMessage {
 
 export interface Message {
   from_client: string;
-  text?: string;          
+  text: string;
   timestamp: string;
   public_key: string;
-  file?: boolean;         
-  filename?: string;     
-  mimetype?: string;      
-  content?: string;       
+  signature?: string;
+  verified?: boolean;
+  file?: boolean;
+  filename?: string;
+  mimetype?: string;
+  content?: string;
 }
