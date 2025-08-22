@@ -30,6 +30,7 @@ export type ChatContextType = {
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
   sendMessage: (text: string) => void;
+  sendFile: (file: File) => void;
 };
 
 export interface WSResponse {
@@ -74,4 +75,10 @@ export interface Message {
   text: string;
   timestamp: string;
   public_key: string;
+  signature?: string;
+  verified?: boolean;
+  file?: boolean;
+  filename?: string;
+  mimetype?: string;
+  content?: string;
 }
