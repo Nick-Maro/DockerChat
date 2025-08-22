@@ -18,6 +18,7 @@ export function ChatWindow() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   
@@ -28,19 +29,33 @@ export function ChatWindow() {
 
   const handleDragEnter = (e: DragEvent) => {
     stopEvent(e);
+
+    const types = e.dataTransfer?.types;
+    const hasFiles = types && (types.includes?.("Files") || Array.from(types).includes("Files"));
+    if(!hasFiles) return;
+
+    dragCounter.current++;
     setIsDragOver(true);
   };
-  
+
   const handleDragLeave = (e: DragEvent) => {
     stopEvent(e);
-    const { left, right, top, bottom } = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const { clientX: x, clientY: y } = e;
-    setIsDragOver(!(x >= left && x <= right && y >= top && y <= bottom));
+    dragCounter.current--;
+    if(dragCounter.current <= 0){
+      dragCounter.current = 0;
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    stopEvent(e);
+    e.dataTransfer!.dropEffect = "copy";
   };
 
   const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    stopEvent(e);
+
+    dragCounter.current = 0;
     setIsDragOver(false);
 
     const files = e.dataTransfer?.files;
@@ -112,7 +127,7 @@ export function ChatWindow() {
     <>
       <div 
         className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
-        onDragOver={stopEvent}
+        onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}>
