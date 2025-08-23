@@ -11,7 +11,7 @@ import sendWhite from '../assets/icons/send-white.svg';
 
 
 export function ChatWindow() {
-  const { currentRoom, messages, sendMessage, sendFile } = useChat();
+  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage } = useChat();
   const { username } = useClient();
   const [messageText, setMessageText] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -19,9 +19,10 @@ export function ChatWindow() {
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
+  const activeMessages = currentClient ? (privateMessages[currentClient.client_id] || []) : messages;
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-  
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages]);
+
   const stopEvent = (e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -75,14 +76,18 @@ export function ChatWindow() {
   };
 
   const handleSendMessage = () => {
-    if (messageText.trim() && currentRoom) {
+    if(messageText.trim() && currentRoom){
       sendMessage(messageText.trim());
+      setMessageText('');
+    }
+    else if(messageText.trim() && currentClient){
+      sendPrivateMessage(messageText.trim());
       setMessageText('');
     }
   };
 
   const handleKeyPress = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if(event.key === 'Enter' && !event.shiftKey){
       event.preventDefault();
       handleSendMessage();
     }
@@ -112,7 +117,7 @@ export function ChatWindow() {
     return <p className={styles.messageText}>{msg.text}</p>;
   };
 
-  if(!currentRoom){
+  if(!currentRoom && !currentClient){
     return (
       <div className={`${styles.noRoom} flex column center-flex`}>
         <h3>No Room Selected</h3>
@@ -120,8 +125,6 @@ export function ChatWindow() {
       </div>
     );
   }
-
-  console.log(messages)
 
   return (
     <>
@@ -139,13 +142,13 @@ export function ChatWindow() {
           </div>
         )}
 
-        {messages.length === 0 ? (
+        {activeMessages.length === 0 ? (
           <div className={styles.noMessages}>
             <p>No messages yet.</p>
             <p>You can drag files here to send them</p>
           </div>
         ) : (
-          messages.map((msg, index) => (
+          activeMessages.map((msg, index) => (
             <div key={index} className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} flex`}>
               <div className={styles.bubble} style={getMessageType(msg.mimetype) === "image" ? { width: '35%' } : {}}>
                 <span className={styles.username}>

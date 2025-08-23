@@ -3,7 +3,7 @@ import { useContext, useState, useEffect, useRef } from "preact/hooks";
 import { useClient } from "./authContext";
 import { useSocket } from "./webSocketContext";
 import { Room, ChatContextType, Message, Client } from "../types";
-import {sendAuthenticatedMessage} from "./utils";
+import { getOrCreatePublicKey, sendAuthenticatedMessage, signMessage } from "./utils";
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
@@ -14,6 +14,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
+  const [privateMessages, setPrivateMessages] = useState<Record<string, Message[]>>({});
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const hasInitialized = useRef(false);
@@ -34,21 +35,41 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
   useEffect(() => {
     if (messages.length <= lastMessageCount.current) return;
-    
+
     const newMessages = messages.slice(lastMessageCount.current);
     lastMessageCount.current = messages.length;
-    
+
     newMessages.forEach(message => {
-      const messageId = JSON.stringify(message);
-      
-      if(processedMessages.current.has(messageId)) return;
-      processedMessages.current.add(messageId);
-      
-      console.log('WebSocket response received:', message);
-      
+      const serialized = JSON.stringify(message);
+
+      // check processed messages
+      if(processedMessages.current.has(serialized)) return;
+      if(processedMessages.current.size >= 1000){
+        const oldest = processedMessages.current.values().next().value;
+        processedMessages.current.delete(oldest);
+      }
+      processedMessages.current.add(serialized);
+
+      // debug
+      /* console.log('WebSocket response received:', message); */
+
       if(message.command === "list_rooms") setRooms(message.rooms || []);
       else if(message.command === "list_clients") setClients(message.clients || []);
       else if(message.command === "get_messages") setRoomMessages(message.messages || []);
+
+      if(message.event === "private_message_received"){
+        if(message.from_client !== username && message.to_client !== username) return; // maybe useless
+
+        console.log(message)
+
+        let conversationKey = message.from_client === username ? message.to_client : message.from_client;
+
+        setPrivateMessages(prev => {
+          const currentMessages = prev[conversationKey] || [];
+          const newMessages = [...currentMessages, message];
+          return { ...prev, [conversationKey]: newMessages };
+        });
+      }
       else if(message.event === "room_message_received") {
         const messageKey = message.file 
           ? `${message.from}:${message.filename}:${message.timestamp}:file`
@@ -99,8 +120,34 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           }
         }
       }
-      else if(message.command === "leave_room"){
-        if(message.error) console.error("Failed to leave room:", message.error);
+      else if(message.command === "leave_room"){ message.error ? console.error("Failed to leave room:", message.error) : null;
+      }
+      else if (message.command === "get_private_messages") {
+        const normalized = (message.private_messages || []).map((m: any) => ({
+          id: m.id,
+          from_client: m.from_client,
+          to_client: m.to_client,
+          text: m.text,
+          timestamp: m.timestamp,
+          verified: m.verified,
+          file: m.file,
+          filename: m.filename || "",
+          mimetype: m.mimetype || "",
+          content: m.content || "",
+          public_key: m.public_key || ""
+        }));
+
+        const clientId = currentClient?.client_id;
+
+        if(clientId){
+          const filtered = normalized.filter(
+            m =>
+              (m.from_client === username && m.to_client === clientId) ||
+              (m.from_client === clientId && m.to_client === username)
+          );
+
+          setPrivateMessages(prev => ({ ...prev, [clientId]: filtered }));
+        }
       }
     });
   }, [messages, username, status]);
@@ -110,6 +157,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       if(currentRoom && currentRoom.name !== roomName) {
       (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
         setCurrentRoom(null);
+        setCurrentClient(null);
         setRoomMessages([]);
         sentMessages.current.clear();
         processedMessages.current.clear();
@@ -120,6 +168,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       const room = rooms.find(r => r.name === roomName);
       if(room){
         setCurrentRoom(room);
+        setCurrentClient(null);
         setRoomMessages([]);
         sentMessages.current.clear();
         processedMessages.current.clear();
@@ -211,16 +260,49 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     }
   };
 
+  const fetchPrivateMessages = async (clientId: string) => {
+    if(username && status === "open"){
+      await sendAuthenticatedMessage(sendMessage, { command: "get_private_messages", client_id: username, target_client_id: clientId });
+      setCurrentClient(clients.find(c => c.client_id === clientId) || null);
+    }
+  };
+  
+  const sendPrivateMessage = (text: string) => {
+    if(username && currentClient && status === "open"){
+      const clientId = currentClient.client_id;
+      const newMessage: Message = {
+        from_client: username,
+        text,
+        timestamp: new Date().toISOString(),
+        public_key: "",
+        verified: false,
+        file: false
+      };
+
+      const messageKey = `${username}:${clientId}:${text}:${newMessage.timestamp}`;
+      sentMessages.current.add(messageKey);
+
+      (async () => {
+        await sendAuthenticatedMessage(sendMessage, { command: `send_private:${clientId}:${text}`, client_id: username });
+      })();
+    }
+  };
+
   return (
     <ChatContext.Provider value={{ 
       rooms, 
       currentRoom, 
       messages: roomMessages,
       clients,
+      currentClient,
+      setCurrentClient,
+      privateMessages,
       joinRoom, 
       leaveRoom, 
       createRoom, 
       sendMessage: sendMessageToRoom,
+      sendPrivateMessage,
+      fetchPrivateMessages,
       sendFile: sendFileToRoom
     }}>
       {children}

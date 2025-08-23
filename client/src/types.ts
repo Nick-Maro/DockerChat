@@ -25,26 +25,31 @@ export type ChatContextType = {
   rooms: Room[];
   currentRoom: Room | null;
   messages: Message[];
+  privateMessages: Record<string, Message[]>;
   clients: Client[];
+  currentClient: Client | null;
+  setCurrentClient: (client: Client | null) => void;
   joinRoom: (roomName: string) => void;
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
   sendMessage: (text: string) => void;
+  sendPrivateMessage: (text: string) => void;
+  fetchPrivateMessages: (clientId: string) => void;
   sendFile: (file: File) => void;
 };
 
 export interface WSResponse {
-    command: string;
-    message?: string;
-    error?: string;
-    client_id?: string;
-    room_name?: string;
-    rooms?: Room[];
-    clients?: Client[];
-    private_messages?: PrivateMessage[];
-    total_messages?: number;
-    messages?: Message[];
-    debug?: any;
+  command: string;
+  message?: string;
+  error?: string;
+  client_id?: string;
+  room_name?: string;
+  rooms?: Room[];
+  clients?: Client[];
+  private_messages?: PrivateMessage[];
+  total_messages?: number;
+  messages?: Message[];
+  debug?: any;
 }
 
 export type Room = {
@@ -72,6 +77,7 @@ export interface PrivateMessage {
 
 export interface Message {
   from_client: string;
+  to_client?: string;
   text: string;
   timestamp: string;
   public_key: string;
