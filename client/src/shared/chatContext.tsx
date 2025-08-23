@@ -155,10 +155,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const joinRoom = (roomName: string) => {
     if(username && status === "open") {
       if(currentRoom && currentRoom.name !== roomName) {
-      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
+        (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
         setCurrentRoom(null);
-        setCurrentClient(null);
         setRoomMessages([]);
+        setCurrentClient(null);
+        setPrivateMessages({});
         sentMessages.current.clear();
         processedMessages.current.clear();
       }
@@ -168,8 +169,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       const room = rooms.find(r => r.name === roomName);
       if(room){
         setCurrentRoom(room);
-        setCurrentClient(null);
         setRoomMessages([]);
+        setCurrentClient(null);
+        setPrivateMessages({});
         sentMessages.current.clear();
         processedMessages.current.clear();
       }
@@ -201,6 +203,8 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       (async () => { await sendAuthenticatedMessage(sendMessage, { command: `create_room:${roomName}`, client_id: username }); })();
       setCurrentRoom(newRoom);
       setRoomMessages([]);
+      setCurrentClient(null);
+      setPrivateMessages({});
     }
   };
 
