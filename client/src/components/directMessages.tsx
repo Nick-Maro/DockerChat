@@ -20,7 +20,7 @@ export default function DirectMessages(){
             <ul className="flex column">
                 {!clients || clients.length === 0 ? ( 
                     <p>No users yet.</p>
-                ) : clients.map((client, index) => { return (
+                ) : clients.slice().sort((a, b) => +new Date(b.last_seen) - +new Date(a.last_seen)).map((client, index) => (
                     <li className={`${styles.client} ${currentClient === client ? styles.active : ''}`}
                         key={client.client_id} onClick={() => selectClient(client)}>
                         {client.online ? <span className={styles.onlineBadge}></span> : undefined }
@@ -33,7 +33,7 @@ export default function DirectMessages(){
                             {/* <p class="last-msg">Typing...</p> */}
                         </div>
                     </li>
-                )})}
+                ))}
             </ul>
         </div>
     )

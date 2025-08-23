@@ -120,8 +120,8 @@ export function ChatWindow() {
   if(!currentRoom && !currentClient){
     return (
       <div className={`${styles.noRoom} flex column center-flex`}>
-        <h3>No Room Selected</h3>
-        <p>Join a room from the sidebar to start chatting</p>
+        <h3>No Chat Selected</h3>
+        <p>Select a room or a user from the sidebar to start chatting.</p>
       </div>
     );
   }
