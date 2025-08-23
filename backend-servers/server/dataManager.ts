@@ -100,7 +100,16 @@ export class DataManager {
         await storage.setRoom(roomId, room);
     }
 
-    async addPrivateMessage(fromClient: string, toClient: string, messageText: string, signature?: string): Promise<string> {
+    async addPrivateMessage(
+        fromClient: string, 
+        toClient: string, 
+        messageText: string, 
+        signature?: string,
+        isFile?: boolean,
+        filename?: string,
+        mimetype?: string,
+        content?: string
+    ): Promise<string> {
         const messageId = generateUUID();
         const message: PrivateMessage = {
             id: messageId,
@@ -109,7 +118,11 @@ export class DataManager {
             text: messageText,
             signature,
             timestamp: getCurrentISOString(),
-            read: false
+            read: false,
+            file: isFile || false,
+            filename: filename || "",
+            mimetype: mimetype || "",
+            content: content || ""
         };
         await storage.addPrivateMessage(message);
         return messageId;
@@ -178,7 +191,8 @@ export class DataManager {
     }
 
     async getUserPrivateMessages(userId: string, limit: number = 50): Promise<PrivateMessage[]> {
-        return storage.getClientPrivateMessages(userId, limit);
+        const messages = await storage.getClientPrivateMessages(userId, limit);
+        return messages;
     }
 
     async getClients(): Promise<{ [clientId: string]: Client }> {

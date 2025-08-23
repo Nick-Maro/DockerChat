@@ -11,7 +11,16 @@ import sendWhite from '../assets/icons/send-white.svg';
 
 
 export function ChatWindow() {
-  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage } = useChat();
+  const { 
+    currentRoom, 
+    currentClient, 
+    messages, 
+    privateMessages, 
+    sendMessage, 
+    sendFile, 
+    sendPrivateMessage,
+    sendPrivateFile 
+  } = useChat();
   const { username } = useClient();
   const [messageText, setMessageText] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -62,7 +71,30 @@ export function ChatWindow() {
     const files = e.dataTransfer?.files;
     if(files && files.length > 0){
       const file = files[0];
-      handleFileUpload(file, sendFile, currentRoom ?? null);
+      handleFileUploadWrapper(file);
+    }
+  };
+
+  const handleFileUploadWrapper = async (file: File) => {
+    try {
+      setUploadError(null);
+      
+      // File size check (10MB)
+      if(file.size > 10 * 1024 * 1024) {
+        setUploadError("File size must be less than 10MB");
+        return;
+      }
+
+      if(currentRoom) {
+        await sendFile(file);
+      } else if(currentClient) {
+        await sendPrivateFile(file);
+      } else {
+        setUploadError("No chat selected");
+      }
+    } catch (error) {
+      console.error("File upload failed:", error);
+      setUploadError("File upload failed");
     }
   };
 
@@ -71,7 +103,7 @@ export function ChatWindow() {
   const handleFileChange = (event: Event) => {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
-    if(file) handleFileUpload(file, sendFile, currentRoom ?? null);
+    if(file) handleFileUploadWrapper(file);
     target.value = "";
   };
 
@@ -112,6 +144,14 @@ export function ChatWindow() {
           </a>
         </p>
       );
+    } else if(msg.file && msg.filename && !msg.content) {
+      console.warn("File message without content:", msg);
+      return (
+        <p className={`${styles.fileMessage} flex`}>
+          <span>❌</span>
+          <span>{msg.filename} (file content missing)</span>
+        </p>
+      );
     }
 
     return <p className={styles.messageText}>{msg.text}</p>;
@@ -126,8 +166,14 @@ export function ChatWindow() {
     );
   }
 
+  const chatTitle = currentRoom ? `Room: ${currentRoom.name}` : `Private chat with ${currentClient?.client_id}`;
+
   return (
     <>
+      <div className={styles.chatHeader}>
+        <h3>{chatTitle}</h3>
+      </div>
+      
       <div 
         className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
         onDragOver={handleDragOver}
@@ -139,6 +185,7 @@ export function ChatWindow() {
           <div className={`${styles.dragOverlay} center-flex column`}>
             <h3>Drop your file here</h3>
             <p>Supported: images, PDF, documents (max 10MB)</p>
+            <p>{currentRoom ? 'Send to room' : `Send to ${currentClient?.client_id}`}</p>
           </div>
         )}
 
@@ -179,7 +226,13 @@ export function ChatWindow() {
           <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} accept="image/*,.pdf,.txt,.doc,.docx" />
         </div>
 
-        <input type="text" placeholder="Type a message..." value={messageText} onChange={(e) => setMessageText((e.target as HTMLInputElement).value)} onKeyPress={handleKeyPress} />
+        <input 
+          type="text" 
+          placeholder={currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`}
+          value={messageText} 
+          onChange={(e) => setMessageText((e.target as HTMLInputElement).value)} 
+          onKeyPress={handleKeyPress} 
+        />
 
         <div className={[styles.icon, styles.send, 'center-flex'].join(' ')} onClick={handleSendMessage} title="Send message">
           <img src={sendWhite} alt="send" />

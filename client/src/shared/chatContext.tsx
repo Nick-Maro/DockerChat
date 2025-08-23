@@ -58,15 +58,36 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       else if(message.command === "get_messages") setRoomMessages(message.messages || []);
 
       if(message.event === "private_message_received"){
-        if(message.from_client !== username && message.to_client !== username) return; // maybe useless
+        if(message.from_client !== username && message.to_client !== username) return;
 
         console.log(message)
 
-        let conversationKey = message.from_client === username ? message.to_client : message.from_client;
+        // skip our own sent messages completely to avoid duplicates
+
+        if(message.from_client === username) {
+          return;
+        }
+
+
+        let conversationKey = message.from_client;
+
+        const privateMessage: Message = {
+          id: message.message_id,
+          from_client: message.from_client,
+          to_client: message.to_client,
+          text: message.text,
+          timestamp: message.timestamp,
+          verified: message.verified,
+          file: message.file || false,
+          filename: message.filename || "",
+          mimetype: message.mimetype || "",
+          content: message.content || "",
+          public_key: message.public_key || ""
+        };
 
         setPrivateMessages(prev => {
           const currentMessages = prev[conversationKey] || [];
-          const newMessages = [...currentMessages, message];
+          const newMessages = [...currentMessages, privateMessage];
           return { ...prev, [conversationKey]: newMessages };
         });
       }
@@ -122,7 +143,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       }
       else if(message.command === "leave_room"){ message.error ? console.error("Failed to leave room:", message.error) : null;
       }
-      else if (message.command === "get_private_messages") {
+      else if (message.command === "get_private_messages") {        
         const normalized = (message.private_messages || []).map((m: any) => ({
           id: m.id,
           from_client: m.from_client,
@@ -145,6 +166,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               (m.from_client === username && m.to_client === clientId) ||
               (m.from_client === clientId && m.to_client === username)
           );
+          // check if any files are missing content
+          const filesWithoutContent = filtered.filter(m => m.file && !m.content);
+          if(filesWithoutContent.length > 0) {
+            console.warn("Files missing content:", filesWithoutContent);
+          }
 
           setPrivateMessages(prev => ({ ...prev, [clientId]: filtered }));
         }
@@ -274,21 +300,74 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const sendPrivateMessage = (text: string) => {
     if(username && currentClient && status === "open"){
       const clientId = currentClient.client_id;
+      const timestamp = new Date().toISOString();
       const newMessage: Message = {
         from_client: username,
+        to_client: clientId,
         text,
-        timestamp: new Date().toISOString(),
+        timestamp,
         public_key: "",
         verified: false,
         file: false
       };
 
-      const messageKey = `${username}:${clientId}:${text}:${newMessage.timestamp}`;
+      const messageKey = `${username}:${clientId}:${text}:${timestamp}`;
       sentMessages.current.add(messageKey);
+
+      setPrivateMessages(prev => {
+        const currentMessages = prev[clientId] || [];
+        return { ...prev, [clientId]: [...currentMessages, newMessage] };
+      });
 
       (async () => {
         await sendAuthenticatedMessage(sendMessage, { command: `send_private:${clientId}:${text}`, client_id: username });
       })();
+    }
+  };
+
+  const sendPrivateFile = async (file: File) => {
+    if(username && currentClient && status === "open"){
+      const clientId = currentClient.client_id;
+      
+      const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(f); 
+      });
+
+      const base64 = await toBase64(file);
+      const timestamp = new Date().toISOString();
+
+      const newMessage: Message = {
+        from_client: username,
+        to_client: clientId,
+        timestamp,
+        public_key: "",
+        text: file.name,
+        file: true,
+        filename: file.name,
+        mimetype: file.type,
+        content: base64,
+        verified: false
+      };
+
+      const messageKey = `${username}:${clientId}:${file.name}:${timestamp}:file`;
+      sentMessages.current.add(messageKey);
+
+      setPrivateMessages(prev => {
+        const currentMessages = prev[clientId] || [];
+        return { ...prev, [clientId]: [...currentMessages, newMessage] };
+      });
+
+      await sendAuthenticatedMessage(sendMessage, { 
+        command: `send_private:${clientId}:${file.name}`, 
+        client_id: username,
+        file: true,
+        filename: file.name,
+        mimetype: file.type,
+        content: base64
+      });
     }
   };
 
@@ -306,6 +385,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       createRoom, 
       sendMessage: sendMessageToRoom,
       sendPrivateMessage,
+      sendPrivateFile,
       fetchPrivateMessages,
       sendFile: sendFileToRoom
     }}>

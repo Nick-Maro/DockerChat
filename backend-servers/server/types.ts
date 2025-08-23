@@ -28,6 +28,10 @@ export interface PrivateMessage {
     signature?: string;
     timestamp: string;
     read: boolean;
+    file?: boolean;
+    filename?: string;
+    mimetype?: string;
+    content?: string;
 }
 
 export interface Room {

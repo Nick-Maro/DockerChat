@@ -287,55 +287,75 @@ export class CommandHandler {
                 } else response.error = "You aren't connected to any room";
                 break;
             }
-            case command.startsWith("send_private:"): {
-                const parts = command.split(":", 3);
-                if(parts.length < 3){
-                    response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
-                    break;
-                }
-                
-                const to_client_id = parts[1];
-                const message_text = parts[2];
-                const client = await this.dataManager.getClient(to_client_id);
-                
-                if(!client){
-                    response.error = "Recipient Client not found";
-                    break;
-                }
-                
-                const message_id = await this.dataManager.addPrivateMessage(
-                    client_id,
-                    to_client_id,
-                    message_text,
-                    data?.signature,
-                    data?.file === true
-                );
-                
-                const messageData = {
-                    event: "private_message_received",
-                    from_client: client_id,
-                    to_client: to_client_id,
-                    text: message_text,
-                    timestamp: new Date().toISOString(),
-                    verified: true,
-                    file: data?.file === true,
-                    message_id: message_id
-                };
-                
-                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}`);
+case command.startsWith("send_private:"): {
+    const parts = command.split(":", 3);
+    if(parts.length < 3){
+        response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
+        break;
+    }
+    
+    const to_client_id = parts[1];
+    const message_text = parts[2];
+    
+    if(!message_text || !this.validateMessage(message_text)){
+        response.error = "Invalid message length";
+        break;
+    }
+    
+    const client = await this.dataManager.getClient(to_client_id);
+    
+    if(!client){
+        response.error = "Recipient Client not found";
+        break;
+    }
+    
+    const isFile = data?.file === true;
+    const filename = data?.filename;
+    const mimetype = data?.mimetype;
+    const content = data?.content;
+    
+    const message_id = await this.dataManager.addPrivateMessage(
+        client_id,
+        to_client_id,
+        message_text,
+        data?.signature,
+        isFile,
+        filename,
+        mimetype,
+        content
+    );
+    
+    const messageData = {
+        event: "private_message_received",
+        from_client: client_id,
+        to_client: to_client_id,
+        text: message_text,
+        timestamp: new Date().toISOString(),
+        verified: true,
+        file: isFile,
+        message_id: message_id
+    };
+    
+    if(isFile){
+        messageData.filename = filename;
+        messageData.mimetype = mimetype;
+        messageData.content = content;
+    }
+    
+    console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
 
-                // to fix
-                this.server.publish("global", JSON.stringify(messageData));
-                
-                response = {
-                    ...response,
-                    message: `Private message sent to ${to_client_id}`,
-                    message_id,
-                    to_client: to_client_id,
-                    file: data?.file === true
-                };
-                break;
-            }
+    // to fix
+    this.server.publish("global", JSON.stringify(messageData));
+    
+    response = {
+        ...response,
+        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
+        message_id,
+        to_client: to_client_id,
+        file: isFile
+    };
+    break;
+}
             case command === "get_private_messages": {
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
                 const my_messages = all_messages
