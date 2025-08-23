@@ -9,15 +9,15 @@ import type { ServerStatus , WebSocketData} from './types';
 await storage.initialize();
 const dataManager = new DataManager();
 const serverId = `Bun-${generateUUID()}`;
-const commandHandler = new CommandHandler(dataManager, serverId);
-
 const wsClientMap: Map<string, ServerWebSocket<WebSocketData>> = new Map();
+let commandHandler: CommandHandler;
 
 console.log(`Bun server starting on ${CONFIG.SERVER.HOST}:${CONFIG.SERVER.PORT}...`);
 
-const websocket: WebSocketHandler<WebSocketData> = {
-    open() {
+export const websocket: WebSocketHandler<WebSocketData> = {
+    open(ws) {
         printDebug(`[WS] Connection opened.`);
+        ws.subscribe("global");
     },
     message(ws, message) {
         commandHandler.handle(ws, message, wsClientMap);
@@ -97,5 +97,7 @@ const server: Server = Bun.serve({
         idleTimeout: 60,
     },
 });
+
+commandHandler = new CommandHandler(dataManager, serverId, server);
 
 console.log(`Server listening on http://${server.hostname}:${server.port}`);

@@ -1,4 +1,4 @@
-import { type ServerWebSocket } from "bun";
+import { type ServerWebSocket, type Server } from "bun";
 import { DataManager } from "./dataManager";
 import { storage } from "./storage";
 import { CONFIG } from "./config";
@@ -9,7 +9,7 @@ import { SecureSession } from "./utils/cryptography/session.ts"
 import type {Client, Room, WSMessage, WebSocketData, WSResponse} from './types';
 
 export class CommandHandler {
-    constructor(private dataManager: DataManager, private serverId: string) {}
+    constructor(private dataManager: DataManager, private serverId: string, private server: Server){ }
 
     public async handle(ws: ServerWebSocket<WebSocketData>, message: string | Buffer, wsClientMap: Map<string, ServerWebSocket<WebSocketData>>) {
         await this.dataManager.cleanExpiredData();
@@ -187,7 +187,7 @@ export class CommandHandler {
                 response = {
                     ...response,
                     message: `Created room '${room_name}'`,
-         room_name: room_name,
+                    room_name: room_name,
                     clients_in_room: roomInfo?.clientCount || 1,
                     debug: debug_info
                 };
@@ -226,107 +226,116 @@ export class CommandHandler {
                 };
                 break;
             }
-case command.startsWith("send_message:"): {
-    const message_text = command.split(":", 2)[1];
-    if(!message_text || !this.validateMessage(message_text)) {
-        response.error = "Invalid message length";
-        break;
-    }
-    const room_id = currentClient.room_id;
-    if (room_id) {
-        const isFile = data?.file === true;
-        const filename = data?.filename;
-        const mimetype = data?.mimetype; 
-        const content = data?.content;
+            case command.startsWith("send_message:"): {
+                const message_text = command.split(":", 2)[1];
+                if(!message_text || !this.validateMessage(message_text)){
+                    response.error = "Invalid message length";
+                    break;
+                }
+                const room_id = currentClient.room_id;
+                if(room_id){
+                    const isFile = data?.file === true;
+                    const filename = data?.filename;
+                    const mimetype = data?.mimetype; 
+                    const content = data?.content;
 
-        await this.dataManager.addMessageToRoom(room_id, {
-            from_client: clientId,
-            text: message_text,
-            signature: data.signature,
-            timestamp: getCurrentISOString(),
-            public_key: currentClient.public_key,
-            verified: true,
-            file: isFile,
-            filename: filename,
-            mimetype: mimetype,
-            content: content
-        });
+                    await this.dataManager.addMessageToRoom(room_id, {
+                        from_client: clientId,
+                        text: message_text,
+                        signature: data.signature,
+                        timestamp: getCurrentISOString(),
+                        public_key: currentClient.public_key,
+                        verified: true,
+                        file: isFile,
+                        filename: filename,
+                        mimetype: mimetype,
+                        content: content
+                    });
 
-        const roomClients = await this.dataManager.getRoomClients(room_id);
-        for (const otherClientId of roomClients) {
-            if (otherClientId === client_id) continue;
-            const otherWs = wsClientMap.get(otherClientId);
-            if (!otherWs) continue;
-            
+                    const roomClients = await this.dataManager.getRoomClients(room_id);
+                    for(const otherClientId of roomClients){
+                        if(otherClientId === client_id) continue;
+                        const otherWs = wsClientMap.get(otherClientId);
+                        if(!otherWs) continue;
+                        
 
-            const messageData = {
-                event: 'room_message_received',
-                from: client_id,
-                timestamp: getCurrentISOString(),
-                text: message_text,
-                file: isFile
-            };
-            
+                        const messageData = {
+                            event: 'room_message_received',
+                            from: client_id,
+                            timestamp: getCurrentISOString(),
+                            text: message_text,
+                            file: isFile
+                        };
+                        
 
-            if (isFile) {
-                messageData.filename = filename;
-                messageData.mimetype = mimetype;
-                messageData.content = content;
+                        if(isFile){
+                            messageData.filename = filename;
+                            messageData.mimetype = mimetype;
+                            messageData.content = content;
+                        }
+                        
+                        otherWs.send(JSON.stringify(messageData));
+                    }
+                    
+                    response = {
+                        ...response,
+                        message: `Message sent in room '${room_id}'`,
+                        room_name: room_id,
+                        message_text: message_text,
+                        file: isFile 
+                    };
+                } else response.error = "You aren't connected to any room";
+                break;
             }
-            
-            otherWs.send(JSON.stringify(messageData));
-        }
-        
-        response = {
-            ...response,
-            message: `Message sent in room '${room_id}'`,
-            room_name: room_id,
-            message_text: message_text,
-            file: isFile 
-        };
-    } else response.error = "You aren't connected to any room";
-    break;
-}
+            case command.startsWith("send_private:"): {
+                const parts = command.split(":", 3);
+                if(parts.length < 3){
+                    response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
+                    break;
+                }
+                
+                const to_client_id = parts[1];
+                const message_text = parts[2];
+                const client = await this.dataManager.getClient(to_client_id);
+                
+                if(!client){
+                    response.error = "Recipient Client not found";
+                    break;
+                }
+                
+                const message_id = await this.dataManager.addPrivateMessage(
+                    client_id,
+                    to_client_id,
+                    message_text,
+                    data?.signature,
+                    data?.file === true
+                );
+                
+                const messageData = {
+                    event: "private_message_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    text: message_text,
+                    timestamp: new Date().toISOString(),
+                    verified: true,
+                    file: data?.file === true,
+                    message_id: message_id
+                };
+                
+                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}`);
 
-case command.startsWith("send_private:"): {
-    const parts = command.split(":", 3);
-    if (parts.length < 3 || !parts[1] || !parts[2]) {
-        response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
-        break;
-    }
-    const to_client_id = parts[1];
-    const message_text = parts[2];
-    const to_client_ws = wsClientMap.get(to_client_id);
-    const client = await this.dataManager.getClient(to_client_id);
-
-    const isFile = data?.file === true; 
-
-    if (client && to_client_ws) {
-        const message_id = await this.dataManager.addPrivateMessage(
-            client_id,
-            to_client_id,
-            message_text,
-            data.signature,
-            isFile 
-        );
-        to_client_ws.send(JSON.stringify({
-            event: 'private_message_received',
-            from: client_id,
-            text: message_text,
-            timestamp: getCurrentISOString(),
-            verified: true,
-            file: isFile 
-        }));
-        response = {
-            ...response,
-            message: `Private message sent to ${to_client_id}`,
-            message_id,
-            to_client: to_client_id,
-            file: isFile
-        };
-    } else response.error = "Recipient Client not found";
-    break;
-}
+                // to fix
+                this.server.publish("global", JSON.stringify(messageData));
+                
+                response = {
+                    ...response,
+                    message: `Private message sent to ${to_client_id}`,
+                    message_id,
+                    to_client: to_client_id,
+                    file: data?.file === true
+                };
+                break;
+            }
             case command === "get_private_messages": {
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
                 const my_messages = all_messages
