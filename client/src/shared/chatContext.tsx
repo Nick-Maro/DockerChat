@@ -379,6 +379,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       clients,
       currentClient,
       setCurrentClient,
+      setCurrentRoom,
       privateMessages,
       joinRoom, 
       leaveRoom, 

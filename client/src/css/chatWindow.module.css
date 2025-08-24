@@ -6,7 +6,7 @@
 	overflow-y: auto;
 	scrollbar-width: thin;
 }
-.noRoom{height: 100dvh;}
+.noRoom{height: 100dvh; text-align: center;}
 
 .message.sent{justify-content: flex-end;}
 .message.received{justify-content: flex-start;}

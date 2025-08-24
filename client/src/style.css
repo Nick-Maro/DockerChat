@@ -29,6 +29,7 @@ body{background-color: var(--background-color);}
 .flex{display: flex;}
 .row{flex-direction: row;}
 .column{flex-direction: column;}
+.hide{display: none;}
 
 button{padding: 10px; border: none; background: none; outline: none; cursor: pointer;}
 input{border: none; outline: none;}

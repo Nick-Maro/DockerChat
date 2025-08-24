@@ -29,6 +29,7 @@ export type ChatContextType = {
   clients: Client[];
   currentClient: Client | null;
   setCurrentClient: (client: Client | null) => void;
+  setCurrentRoom: (room: Room | null) => void;
   joinRoom: (roomName: string) => void;
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
@@ -77,6 +78,7 @@ export interface PrivateMessage {
 }
 
 export interface Message {
+  id?: string;
   from_client: string;
   to_client?: string;
   text: string;

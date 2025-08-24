@@ -23,6 +23,18 @@
     padding: 10px 25px;
     border-bottom: 0.5px solid var(--border);
 }
+.home .header .goBackBtn{width: 50px; height: 50px; margin: 0 -15px 0 -15px; padding: 5px; cursor: pointer; transition: .15s;}
+.home .header .goBackBtn:hover{background: #2d2d2d; transition: .15s;}
 .home main .header .person h2{font-size: 20px; font-weight: 500;}
 .home main .header .person p{font-size: 14px;}
 .home main .header img{width: 50px; height: 50px; border-radius: 50%;}
+
+
+/*** RESPONSIVE ***/
+
+@media screen and (max-width: 768px){
+    .sidebar{width: 100%;}
+    .hideSidebar{display: none;}
+    .hideMain{display: none !important;}
+    .showMain{width: 100% !important;}
+}
