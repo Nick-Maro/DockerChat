@@ -36,6 +36,7 @@ export type ChatContextType = {
   sendPrivateMessage: (text: string) => void;
   fetchPrivateMessages: (clientId: string) => void;
   sendFile: (file: File) => void;
+  sendPrivateFile: (file: File) => void;
 };
 
 export interface WSResponse {

@@ -11,16 +11,7 @@ import sendWhite from '../assets/icons/send-white.svg';
 
 
 export function ChatWindow() {
-  const { 
-    currentRoom, 
-    currentClient, 
-    messages, 
-    privateMessages, 
-    sendMessage, 
-    sendFile, 
-    sendPrivateMessage,
-    sendPrivateFile 
-  } = useChat();
+  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage, sendPrivateFile } = useChat();
   const { username } = useClient();
   const [messageText, setMessageText] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -166,14 +157,8 @@ export function ChatWindow() {
     );
   }
 
-  const chatTitle = currentRoom ? `Room: ${currentRoom.name}` : `Private chat with ${currentClient?.client_id}`;
-
   return (
     <>
-      <div className={styles.chatHeader}>
-        <h3>{chatTitle}</h3>
-      </div>
-      
       <div 
         className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
         onDragOver={handleDragOver}
@@ -226,13 +211,11 @@ export function ChatWindow() {
           <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} accept="image/*,.pdf,.txt,.doc,.docx" />
         </div>
 
-        <input 
-          type="text" 
+        <input type="text"
           placeholder={currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`}
           value={messageText} 
           onChange={(e) => setMessageText((e.target as HTMLInputElement).value)} 
-          onKeyPress={handleKeyPress} 
-        />
+          onKeyPress={handleKeyPress} />
 
         <div className={[styles.icon, styles.send, 'center-flex'].join(' ')} onClick={handleSendMessage} title="Send message">
           <img src={sendWhite} alt="send" />
