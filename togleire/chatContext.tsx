@@ -7,7 +7,6 @@ import { getOrCreatePublicKey, sendAuthenticatedMessage, signMessage } from "./u
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
-
 export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const { username } = useClient();
   const { status, messages, sendMessage } = useSocket();
@@ -33,6 +32,28 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     }
   }, [status, username]);
 
+  const updateClientOnlineStatus = (clientId: string, isOnline: boolean) => {
+    setClients(prev => prev.map(client => 
+      client.client_id === clientId 
+        ? { ...client, online: isOnline }
+        : client
+    ));
+  };
+
+  const addNewClient = (clientId: string) => {
+    setClients(prev => {
+      const exists = prev.some(client => client.client_id === clientId);
+      if (exists) return prev;
+      
+      return [...prev, {
+        client_id: clientId,
+        room_id: null,
+        last_seen: new Date().toISOString(),
+        online: true
+      }];
+    });
+  };
+
   useEffect(() => {
     if (messages.length <= lastMessageCount.current) return;
 
@@ -42,58 +63,58 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     newMessages.forEach(message => {
       const serialized = JSON.stringify(message);
 
-      // check processed messages
       if(processedMessages.current.has(serialized)) return;
       if(processedMessages.current.size >= 1000){
         const oldest = processedMessages.current.values().next().value;
         processedMessages.current.delete(oldest);
       }
       processedMessages.current.add(serialized);
-
-      // debug
-      /* console.log('WebSocket response received:', message); */
-
-      if(message.command === "list_rooms") setRooms(message.rooms || []);
-      else if(message.command === "list_clients") setClients(message.clients || []);
-      else if(message.command === "get_messages") setRoomMessages(message.messages || []);
-
+      // switch to switch case
+      if(message.command === "list_rooms") {
+        setRooms(message.rooms || []);
+      }
+      else if(message.command === "list_clients") {
+        setClients(message.clients || []);
+      }
+      else if(message.command === "get_messages") {
+        setRoomMessages(message.messages || []);
+      }
 
       if(message.event === "client_registered") {
-
-        if(username && status === "open") {
-          (async () => {
-            await sendAuthenticatedMessage(sendMessage, { command: "list_clients", client_id: username });
-          })();
-        }
+        addNewClient(message.client_id);
       }
       else if(message.event === "client_online") {
+        updateClientOnlineStatus(message.client_id, true);
+      }
 
-        setClients(prev => prev.map(client => 
-          client.client_id === message.client_id 
-            ? { ...client, online: true, last_seen: message.timestamp }
-            : client
+      else if(message.event === "user_joined") {
+        if(currentRoom && currentRoom.name === message.room_name) {
+          setCurrentRoom(prev => prev ? { ...prev, clients: message.clients_in_room } : null);
+        }
+        
+        setRooms(prev => prev.map(room => 
+          room.name === message.room_name 
+            ? { ...room, clients: message.clients_in_room }
+            : room
         ));
       }
-      //TODO: fix
-      else if(message.event === "client_offline") {
-
-        setClients(prev => prev.map(client => 
-          client.client_id === message.client_id 
-            ? { ...client, online: false, last_seen: message.timestamp }
-            : client
+      else if(message.event === "user_left" || message.event === "user_disconnect") {
+        if(currentRoom && currentRoom.name === message.room_name) {
+          setCurrentRoom(prev => prev ? { ...prev, clients: message.clients_in_rooms } : null);
+        }
+        
+        setRooms(prev => prev.map(room => 
+          room.name === message.room_name 
+            ? { ...room, clients: message.clients_in_rooms }
+            : room
         ));
       }
       else if(message.event === "private_message_received"){
         if(message.from_client !== username && message.to_client !== username) return;
 
-        console.log(message)
-
-        // skip our own sent messages completely to avoid duplicates
-
         if(message.from_client === username) {
           return;
         }
-
 
         let conversationKey = message.from_client;
 
@@ -142,7 +163,6 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           const roomName = message.command.split(":")[1];
           setRooms(prev => prev.filter(r => r.name !== roomName));
           setCurrentRoom(null);
-          console.error("Failed to create room:", message.error);
         }
         else if(message.room_name){
           setRooms(prev => prev.map(r => 
@@ -152,7 +172,6 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       }
       else if(message.command && message.command.startsWith("join_room:")){
         if(message.error){
-          console.error("Failed to join room:", message.error);
           setCurrentRoom(null);
           setRoomMessages([]);
           sentMessages.current.clear();
@@ -163,11 +182,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
             setRoomMessages([]);
             sentMessages.current.clear();
             processedMessages.current.clear();
-            (async () => { await sendAuthenticatedMessage(sendMessage, { command: `get_messages`, client_id: username }); })();
+            (async () => { 
+              await sendAuthenticatedMessage(sendMessage, { command: `get_messages`, client_id: username }); 
+            })();
           }
         }
-      }
-      else if(message.command === "leave_room"){ message.error ? console.error("Failed to leave room:", message.error) : null;
       }
       else if (message.command === "get_private_messages") {        
         const normalized = (message.private_messages || []).map((m: any) => ({
@@ -192,22 +211,25 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               (m.from_client === username && m.to_client === clientId) ||
               (m.from_client === clientId && m.to_client === username)
           );
-          // check if any files are missing content
-          const filesWithoutContent = filtered.filter(m => m.file && !m.content);
-          if(filesWithoutContent.length > 0) {
-            console.warn("Files missing content:", filesWithoutContent);
-          }
 
           setPrivateMessages(prev => ({ ...prev, [clientId]: filtered }));
+          
+          setClients(prev => prev.map(client => 
+            client.client_id === clientId 
+              ? { ...client, hasUnreadMessages: false }
+              : client
+          ));
         }
       }
     });
-  }, [messages, username, status]);
+  }, [messages, username, status, currentRoom, currentClient]);
 
   const joinRoom = (roomName: string) => {
     if(username && status === "open") {
       if(currentRoom && currentRoom.name !== roomName) {
-        (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
+        (async () => { 
+          await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); 
+        })();
         setCurrentRoom(null);
         setRoomMessages([]);
         setCurrentClient(null);
@@ -216,7 +238,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         processedMessages.current.clear();
       }
       
-      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username }); })();
+      (async () => { 
+        await sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username }); 
+      })();
       
       const room = rooms.find(r => r.name === roomName);
       if(room){
@@ -237,7 +261,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       sentMessages.current.clear();
       processedMessages.current.clear();
       
-      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); })();
+      (async () => { 
+        await sendAuthenticatedMessage(sendMessage, { command: `leave_room`, client_id: username }); 
+      })();
     }
   };
 
@@ -252,7 +278,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       };
       
       setRooms(prev => [...prev, newRoom]);
-      (async () => { await sendAuthenticatedMessage(sendMessage, { command: `create_room:${roomName}`, client_id: username }); })();
+      (async () => { 
+        await sendAuthenticatedMessage(sendMessage, { command: `create_room:${roomName}`, client_id: username }); 
+      })();
       setCurrentRoom(newRoom);
       setRoomMessages([]);
       setCurrentClient(null);
@@ -271,7 +299,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       
       const messageKey = `${username}:${text}:${newMessage.timestamp}`;
       sentMessages.current.add(messageKey);
-      setRoomMessages(prev => [...prev, newMessage]);
+      setRoomMessages(prev => [...prev, newMessage]);   
       (async() => {
         await sendAuthenticatedMessage(sendMessage, { command: `send_message:${text}`, client_id: username });
       })();
@@ -301,7 +329,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         content: base64
       };
 
-      const messageKey = `${username}:${file.name}:${newMessage.timestamp}`;
+      const messageKey = `${username}:${file.name}:${newMessage.timestamp}:file`;
       sentMessages.current.add(messageKey);
       setRoomMessages(prev => [...prev, newMessage]);
 
@@ -318,7 +346,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
   const fetchPrivateMessages = async (clientId: string) => {
     if(username && status === "open"){
-      await sendAuthenticatedMessage(sendMessage, { command: "get_private_messages", client_id: username, target_client_id: clientId });
+      await sendAuthenticatedMessage(sendMessage, { 
+        command: "get_private_messages", 
+        client_id: username, 
+        target_client_id: clientId 
+      });
       setCurrentClient(clients.find(c => c.client_id === clientId) || null);
     }
   };
@@ -346,7 +378,10 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       });
 
       (async () => {
-        await sendAuthenticatedMessage(sendMessage, { command: `send_private:${clientId}:${text}`, client_id: username });
+        await sendAuthenticatedMessage(sendMessage, { 
+          command: `send_private:${clientId}:${text}`, 
+          client_id: username 
+        });
       })();
     }
   };

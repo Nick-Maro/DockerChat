@@ -52,6 +52,7 @@ export class CommandHandler {
             const newClient: Client = {
                 id: username,
                 public_key: data.public_key,
+                encryption_public_key: data.encryption_public_key || null, // Store encryption key
                 room_id: null,
                 last_seen: now,
                 created_at: now
@@ -68,13 +69,6 @@ export class CommandHandler {
             ws.data.clientId = username;
             wsClientMap.set(username, ws);
             SecureSession.bindSession(ws.data.wsId, username, data.public_key);
-
-            // Broadcast nuovo client a tutti gli utenti connessi
-            this.server.publish("global", JSON.stringify({
-                event: "client_registered",
-                client_id: username,
-                timestamp: now
-            }));
 
             const response: WSResponse = {
                 command: command,
@@ -200,6 +194,99 @@ export class CommandHandler {
                 };
                 break;
             }
+
+            // Handle encryption key exchange
+            case command.startsWith("exchange_encryption_key:"): {
+                const to_client_id = command.split(":", 2)[1];
+                const encryption_public_key = data.encryption_public_key;
+                
+                if (!encryption_public_key) {
+                    response.error = "Missing encryption public key";
+                    break;
+                }
+                
+                const targetClient = await this.dataManager.getClient(to_client_id);
+                if (!targetClient) {
+                    response.error = "Target client not found";
+                    break;
+                }
+                
+                // Store the encryption key for this client
+                currentClient.encryption_public_key = encryption_public_key;
+                await storage.setClient(client_id, currentClient);
+                
+                // Send the key to the target client
+                const keyExchangeData = {
+                    event: "encryption_key_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    encryption_public_key: encryption_public_key,
+                    timestamp: getCurrentISOString()
+                };
+                
+                // Broadcast to target client
+                const targetWs = wsClientMap.get(to_client_id);
+                if (targetWs) {
+                    targetWs.send(JSON.stringify(keyExchangeData));
+                }
+                
+                // Also broadcast globally so the client can receive it if connected elsewhere
+                this.server.publish("global", JSON.stringify(keyExchangeData));
+                
+                response = {
+                    ...response,
+                    message: `Encryption key sent to ${to_client_id}`,
+                    to_client: to_client_id
+                };
+                break;
+            }
+
+            // Handle encrypted private messages
+            case command.startsWith("send_encrypted_private:"): {
+                const to_client_id = command.split(":", 2)[1];
+                const encrypted_message = data.encrypted_message;
+                
+                if(!encrypted_message){
+                    response.error = "Missing encrypted message data";
+                    break;
+                }
+                
+                const client = await this.dataManager.getClient(to_client_id);
+                if(!client){
+                    response.error = "Recipient Client not found";
+                    break;
+                }
+                
+                const message_id = await this.dataManager.addEncryptedPrivateMessage(
+                    client_id,
+                    to_client_id,
+                    encrypted_message
+                );
+                
+                const messageData = {
+                    event: "encrypted_private_message_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    encrypted_message: encrypted_message,
+                    message_id: message_id,
+                    timestamp: getCurrentISOString()
+                };
+                
+                console.log(`Broadcasting encrypted private message from ${client_id} to ${to_client_id}`);
+                
+                // Broadcast to all clients so the recipient can receive it
+                this.server.publish("global", JSON.stringify(messageData));
+                
+                response = {
+                    ...response,
+                    message: `Encrypted private message sent to ${to_client_id}`,
+                    message_id,
+                    to_client: to_client_id,
+                    encrypted: true
+                };
+                break;
+            }
+
             case command.startsWith("join_room:"): {
                 const room_name = command.split(":", 2)[1];
                 if (!room_name) {
@@ -294,92 +381,124 @@ export class CommandHandler {
                 } else response.error = "You aren't connected to any room";
                 break;
             }
-case command.startsWith("send_private:"): {
-    const parts = command.split(":", 3);
-    if(parts.length < 3){
-        response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
-        break;
-    }
-    
-    const to_client_id = parts[1];
-    const message_text = parts[2];
-    
-    if(!message_text || !this.validateMessage(message_text)){
-        response.error = "Invalid message length";
-        break;
-    }
-    
-    const client = await this.dataManager.getClient(to_client_id);
-    
-    if(!client){
-        response.error = "Recipient Client not found";
-        break;
-    }
-    
-    const isFile = data?.file === true;
-    const filename = data?.filename;
-    const mimetype = data?.mimetype;
-    const content = data?.content;
-    
-    const message_id = await this.dataManager.addPrivateMessage(
-        client_id,
-        to_client_id,
-        message_text,
-        data?.signature,
-        isFile,
-        filename,
-        mimetype,
-        content
-    );
-    
-    const messageData = {
-        event: "private_message_received",
-        from_client: client_id,
-        to_client: to_client_id,
-        text: message_text,
-        timestamp: new Date().toISOString(),
-        verified: true,
-        file: isFile,
-        message_id: message_id
-    };
-    
-    if(isFile){
-        messageData.filename = filename;
-        messageData.mimetype = mimetype;
-        messageData.content = content;
-    }
-    
-    console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
 
-    // to fix
-    this.server.publish("global", JSON.stringify(messageData));
-    
-    response = {
-        ...response,
-        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
-        message_id,
-        to_client: to_client_id,
-        file: isFile
-    };
-    break;
-}
-            case command === "get_private_messages": {
-                const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
-                const my_messages = all_messages
-                    .map(msg => ({
-                        ...msg,
-                        direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
-                        verified: !!msg.signature,
-                        file: msg.file === true 
-                    }))
-                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                await this.dataManager.setPrivateMessagesAsRead(client_id);
+            // Regular private messages (non-encrypted, for files and fallback)
+            case command.startsWith("send_private:"): {
+                const parts = command.split(":", 3);
+                if(parts.length < 3){
+                    response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
+                    break;
+                }
+                
+                const to_client_id = parts[1];
+                const message_text = parts[2];
+                
+                if(!message_text || !this.validateMessage(message_text)){
+                    response.error = "Invalid message length";
+                    break;
+                }
+                
+                const client = await this.dataManager.getClient(to_client_id);
+                
+                if(!client){
+                    response.error = "Recipient Client not found";
+                    break;
+                }
+                
+                const isFile = data?.file === true;
+                const filename = data?.filename;
+                const mimetype = data?.mimetype;
+                const content = data?.content;
+                
+                const message_id = await this.dataManager.addPrivateMessage(
+                    client_id,
+                    to_client_id,
+                    message_text,
+                    data?.signature,
+                    isFile,
+                    filename,
+                    mimetype,
+                    content
+                );
+                
+                const messageData = {
+                    event: "private_message_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    text: message_text,
+                    timestamp: getCurrentISOString(),
+                    verified: true,
+                    file: isFile,
+                    message_id: message_id
+                };
+                
+                if(isFile){
+                    messageData.filename = filename;
+                    messageData.mimetype = mimetype;
+                    messageData.content = content;
+                }
+                
+                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+
+                this.server.publish("global", JSON.stringify(messageData));
+                
                 response = {
                     ...response,
-                    message: "Retrieved private messages",
-                    private_messages: my_messages,
-                    total_messages: my_messages.length
+                    message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
+                    message_id,
+                    to_client: to_client_id,
+                    file: isFile
                 };
+                break;
+            }
+
+            case command === "get_private_messages": {
+                const target_client_id = data.target_client_id;
+                if (target_client_id) {
+                    // Get messages for specific client conversation
+                    const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
+                    const filtered_messages = all_messages
+                        .filter(msg => 
+                            (msg.from_client === client_id && msg.to_client === target_client_id) ||
+                            (msg.from_client === target_client_id && msg.to_client === client_id)
+                        )
+                        .map(msg => ({
+                            ...msg,
+                            direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
+                            verified: !!msg.signature,
+                            file: msg.file === true,
+                            encrypted: msg.encrypted || false
+                        }))
+                        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                        
+                    response = {
+                        ...response,
+                        message: `Retrieved private messages with ${target_client_id}`,
+                        private_messages: filtered_messages,
+                        total_messages: filtered_messages.length,
+                        target_client_id
+                    };
+                } else {
+                    // Get all private messages
+                    const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
+                    const my_messages = all_messages
+                        .map(msg => ({
+                            ...msg,
+                            direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
+                            verified: !!msg.signature,
+                            file: msg.file === true,
+                            encrypted: msg.encrypted || false
+                        }))
+                        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                        
+                    await this.dataManager.setPrivateMessagesAsRead(client_id);
+                    response = {
+                        ...response,
+                        message: "Retrieved private messages",
+                        private_messages: my_messages,
+                        total_messages: my_messages.length
+                    };
+                }
                 break;
             }
             case command === "get_messages": {
@@ -411,7 +530,8 @@ case command.startsWith("send_private:"): {
                         client_id: cid,
                         room_id: c_data.room_id,
                         last_seen: c_data.last_seen,
-                        online: !!c_data.online
+                        has_encryption_key: !!c_data.encryption_public_key, // Indicate if client supports encryption
+                        encryption_public_key: c_data.encryption_public_key // Include the encryption key
                     }));
                 response = {
                     ...response,
@@ -449,18 +569,7 @@ case command.startsWith("send_private:"): {
                 break;
             }
             case command === "heartbeat": {
-                const wasOffline = !currentClient.online;
                 await this.dataManager.setClientOnline(client_id, true, true);
-                
-       
-                if (wasOffline) {
-                    this.server.publish("global", JSON.stringify({
-                        event: "client_online",
-                        client_id: client_id,
-                        timestamp: getCurrentISOString()
-                    }));
-                }
-                
                 response = {
                     ...response,
                     message: "Heartbeat received",
@@ -473,14 +582,6 @@ case command.startsWith("send_private:"): {
                 await this.dataManager.removeClient(client_id);
                 wsClientMap.delete(client_id);
                 await this.leaveBroadcast(client_id, room_id, wsClientMap, "user_disconnect");
-                
-      
-                this.server.publish("global", JSON.stringify({
-                    event: "client_offline",
-                    client_id: client_id,
-                    timestamp: getCurrentISOString()
-                }));
-                
                 response = {
                     ...response,
                     message: `Client ${client_id} disconnected and removed`,

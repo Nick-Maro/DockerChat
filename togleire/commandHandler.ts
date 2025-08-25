@@ -11,6 +11,34 @@ import type {Client, Room, WSMessage, WebSocketData, WSResponse} from './types';
 export class CommandHandler {
     constructor(private dataManager: DataManager, private serverId: string, private server: Server){ }
 
+    // NUOVO: Gestisce disconnessioni improvvise (chiusura browser, perdita connessione)
+    public handleWebSocketClose(clientId: string, wsClientMap: Map<string, ServerWebSocket<WebSocketData>>) {
+        if (clientId) {
+            wsClientMap.delete(clientId);
+            this.broadcastClientStatusUpdate(clientId, 'client_offline', wsClientMap);
+        }
+    }
+
+    // Nuovo metodo per broadcast di eventi globali
+    private broadcastClientStatusUpdate(clientId: string, event: 'client_online' | 'client_offline' | 'client_registered', wsClientMap: Map<string, ServerWebSocket<WebSocketData>>) {
+        const message = {
+            event,
+            client_id: clientId,
+            timestamp: getCurrentISOString()
+        };
+        
+        // Broadcast a tutti i client connessi eccetto il client stesso
+        for (const [connectedClientId, ws] of wsClientMap) {
+            if (connectedClientId !== clientId && ws.readyState === 1) {
+                try {
+                    ws.send(JSON.stringify(message));
+                } catch (error) {
+                    console.error(`Failed to broadcast to ${connectedClientId}:`, error);
+                }
+            }
+        }
+    }
+
     public async handle(ws: ServerWebSocket<WebSocketData>, message: string | Buffer, wsClientMap: Map<string, ServerWebSocket<WebSocketData>>) {
         await this.dataManager.cleanExpiredData();
         SecureSession.cleanExpiredSessions();
@@ -69,12 +97,8 @@ export class CommandHandler {
             wsClientMap.set(username, ws);
             SecureSession.bindSession(ws.data.wsId, username, data.public_key);
 
-            // Broadcast nuovo client a tutti gli utenti connessi
-            this.server.publish("global", JSON.stringify({
-                event: "client_registered",
-                client_id: username,
-                timestamp: now
-            }));
+            // NUOVO: Broadcast creazione account a tutti i client
+            this.broadcastClientStatusUpdate(username, 'client_registered', wsClientMap);
 
             const response: WSResponse = {
                 command: command,
@@ -159,6 +183,13 @@ export class CommandHandler {
 
         await this.dataManager.updateClientLastSeen(clientId);
         debug_info.client_id = clientId;
+
+        // NUOVO: Verifica se il client era offline e ora è online
+        const wasOffline = !wsClientMap.has(clientId);
+        if (wasOffline) {
+            wsClientMap.set(clientId, ws);
+            this.broadcastClientStatusUpdate(clientId, 'client_online', wsClientMap);
+        }
 
         let response: WSResponse = { command, message: "Unknown command", debug: debug_info };
 
@@ -294,75 +325,75 @@ export class CommandHandler {
                 } else response.error = "You aren't connected to any room";
                 break;
             }
-case command.startsWith("send_private:"): {
-    const parts = command.split(":", 3);
-    if(parts.length < 3){
-        response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
-        break;
-    }
-    
-    const to_client_id = parts[1];
-    const message_text = parts[2];
-    
-    if(!message_text || !this.validateMessage(message_text)){
-        response.error = "Invalid message length";
-        break;
-    }
-    
-    const client = await this.dataManager.getClient(to_client_id);
-    
-    if(!client){
-        response.error = "Recipient Client not found";
-        break;
-    }
-    
-    const isFile = data?.file === true;
-    const filename = data?.filename;
-    const mimetype = data?.mimetype;
-    const content = data?.content;
-    
-    const message_id = await this.dataManager.addPrivateMessage(
-        client_id,
-        to_client_id,
-        message_text,
-        data?.signature,
-        isFile,
-        filename,
-        mimetype,
-        content
-    );
-    
-    const messageData = {
-        event: "private_message_received",
-        from_client: client_id,
-        to_client: to_client_id,
-        text: message_text,
-        timestamp: new Date().toISOString(),
-        verified: true,
-        file: isFile,
-        message_id: message_id
-    };
-    
-    if(isFile){
-        messageData.filename = filename;
-        messageData.mimetype = mimetype;
-        messageData.content = content;
-    }
-    
-    console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+            case command.startsWith("send_private:"): {
+                const parts = command.split(":", 3);
+                if(parts.length < 3){
+                    response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
+                    break;
+                }
+                
+                const to_client_id = parts[1];
+                const message_text = parts[2];
+                
+                if(!message_text || !this.validateMessage(message_text)){
+                    response.error = "Invalid message length";
+                    break;
+                }
+                
+                const client = await this.dataManager.getClient(to_client_id);
+                
+                if(!client){
+                    response.error = "Recipient Client not found";
+                    break;
+                }
+                
+                const isFile = data?.file === true;
+                const filename = data?.filename;
+                const mimetype = data?.mimetype;
+                const content = data?.content;
+                
+                const message_id = await this.dataManager.addPrivateMessage(
+                    client_id,
+                    to_client_id,
+                    message_text,
+                    data?.signature,
+                    isFile,
+                    filename,
+                    mimetype,
+                    content
+                );
+                
+                const messageData = {
+                    event: "private_message_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    text: message_text,
+                    timestamp: new Date().toISOString(),
+                    verified: true,
+                    file: isFile,
+                    message_id: message_id
+                };
+                
+                if(isFile){
+                    messageData.filename = filename;
+                    messageData.mimetype = mimetype;
+                    messageData.content = content;
+                }
+                
+                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
 
-    // to fix
-    this.server.publish("global", JSON.stringify(messageData));
-    
-    response = {
-        ...response,
-        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
-        message_id,
-        to_client: to_client_id,
-        file: isFile
-    };
-    break;
-}
+                // to fix
+                this.server.publish("global", JSON.stringify(messageData));
+                
+                response = {
+                    ...response,
+                    message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
+                    message_id,
+                    to_client: to_client_id,
+                    file: isFile
+                };
+                break;
+            }
             case command === "get_private_messages": {
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
                 const my_messages = all_messages
@@ -411,7 +442,7 @@ case command.startsWith("send_private:"): {
                         client_id: cid,
                         room_id: c_data.room_id,
                         last_seen: c_data.last_seen,
-                        online: !!c_data.online
+                        online: wsClientMap.has(cid) // MODIFICATO: controlla se è nella mappa WebSocket
                     }));
                 response = {
                     ...response,
@@ -449,18 +480,7 @@ case command.startsWith("send_private:"): {
                 break;
             }
             case command === "heartbeat": {
-                const wasOffline = !currentClient.online;
                 await this.dataManager.setClientOnline(client_id, true, true);
-                
-       
-                if (wasOffline) {
-                    this.server.publish("global", JSON.stringify({
-                        event: "client_online",
-                        client_id: client_id,
-                        timestamp: getCurrentISOString()
-                    }));
-                }
-                
                 response = {
                     ...response,
                     message: "Heartbeat received",
@@ -472,15 +492,11 @@ case command.startsWith("send_private:"): {
                 const room_id = currentClient.room_id || "";
                 await this.dataManager.removeClient(client_id);
                 wsClientMap.delete(client_id);
+                
+                // NUOVO: Broadcast disconnessione
+                this.broadcastClientStatusUpdate(client_id, 'client_offline', wsClientMap);
+                
                 await this.leaveBroadcast(client_id, room_id, wsClientMap, "user_disconnect");
-                
-      
-                this.server.publish("global", JSON.stringify({
-                    event: "client_offline",
-                    client_id: client_id,
-                    timestamp: getCurrentISOString()
-                }));
-                
                 response = {
                     ...response,
                     message: `Client ${client_id} disconnected and removed`,
@@ -493,6 +509,14 @@ case command.startsWith("send_private:"): {
         }
 
         this.sendResponse(ws, response);
+    }
+
+    // NUOVO: Gestisce disconnessioni improvvise (chiusura browser, perdita connessione)
+    public handleWebSocketClose(clientId: string, wsClientMap: Map<string, ServerWebSocket<WebSocketData>>) {
+        if (clientId) {
+            wsClientMap.delete(clientId);
+            this.broadcastClientStatusUpdate(clientId, 'client_offline', wsClientMap);
+        }
     }
 
     private async joinRoom(client_id: string, currentClient: Client, room_name: string): Promise<void> {
