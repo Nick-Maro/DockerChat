@@ -1,9 +1,6 @@
 # Network Security Infrastructure Project
 A comprehensive Docker-based network security infrastructure implementing multiple security layers and monitoring capabilities.
 
-# License
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Architecture Overview
 This project implements a complete network security infrastructure with the following components:
 - **NGINX Reverse Proxy**: Load balances requests between two backend servers
@@ -302,5 +299,7 @@ docker exec -it <container-name> /bin/bash
 - [ ] **Production Features**
   - Performance monitoring and optimization
 
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 **⚠️ Security Notice**: This is a development/educational project. For production use, ensure proper security hardening, regular updates, and professional security review.
