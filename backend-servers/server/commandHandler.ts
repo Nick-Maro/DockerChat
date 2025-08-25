@@ -69,7 +69,6 @@ export class CommandHandler {
             wsClientMap.set(username, ws);
             SecureSession.bindSession(ws.data.wsId, username, data.public_key);
 
-            // Broadcast nuovo client a tutti gli utenti connessi
             this.server.publish("global", JSON.stringify({
                 event: "client_registered",
                 client_id: username,
