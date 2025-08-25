@@ -24,3 +24,6 @@ volumes/
 # MacOS
 **/.DS_Store
 Thumbs.db
+
+# binaries
+firewall
