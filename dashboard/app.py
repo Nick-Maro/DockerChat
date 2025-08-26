@@ -15,7 +15,11 @@ app.secret_key = 'your-secret-key-here'
 
 FIREWALL_RULES_PATH = "/var/log/shared/firewall/rules.json"
 FIREWALL_LOG_PATH = "/var/log/shared/firewall/firewall.log"
-os.makedirs(os.path.dirname(FIREWALL_LOG_PATH), exist_ok=True)
+try:
+    os.makedirs(os.path.dirname(FIREWALL_LOG_PATH), exist_ok=True)
+except PermissionError:
+    print("Warning: Cannot create firewall log directory, using existing one")
+    pass
 
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))

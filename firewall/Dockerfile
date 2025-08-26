@@ -10,18 +10,15 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o firewall ./src/
 
 FROM alpine:3.18
-RUN apk add --no-cache wget ca-certificates tzdata && \
-    adduser -D -s /bin/sh -u 1000 firewall && \
-    mkdir -p /var/log/shared/firewall && \
-    chown -R firewall:firewall /var/log/shared
+RUN apk add --no-cache wget ca-certificates tzdata curl && \
+    mkdir -p /var/log/shared/firewall
 WORKDIR /app
 COPY --from=builder /app/firewall ./
 COPY rules.json /var/log/shared/firewall/rules.json
 RUN mkdir -p logs && \
-    chown -R firewall:firewall /app && \
-    chown -R firewall:firewall /var/log/shared/firewall
+    chmod 666 /var/log/shared/firewall/rules.json && \
+    chmod 777 /var/log/shared/firewall
 EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:5001 || exit 1
-USER firewall:firewall
 CMD ["./firewall"]
