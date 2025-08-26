@@ -9,16 +9,19 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	BufferSize          = 4096
-	RulesReloadInterval = 1 * time.Second
-	CleanupInterval     = 5 * time.Minute
-	DefaultFirewallPort = 5001
-	DefaultProxyPort    = 8080
+	BufferSize            = 4096
+	RulesReloadInterval   = 1 * time.Second
+	CleanupInterval       = 5 * time.Minute
+	DefaultFirewallPort   = 5001
+	DefaultProxyPort      = 8080
+	MaxTrackedIPs         = 10000
+	ForceCleanupThreshold = 8000
 )
 
 type Rules struct {
@@ -51,7 +54,6 @@ func NewFirewall() *Firewall {
 		proxyPort:          getEnvInt("REVERSE_PROXY_PORT", DefaultProxyPort),
 	}
 
-	// Inizializza il logger
 	logger, err := NewFirewallLogger()
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
@@ -89,7 +91,6 @@ func (fw *Firewall) defaultRules() *Rules {
 }
 
 func (fw *Firewall) loadRules() {
-	// Assicurati che la directory esista
 	os.MkdirAll(filepath.Dir(fw.rulesFile), 0755)
 
 	stat, err := os.Stat(fw.rulesFile)
@@ -100,14 +101,17 @@ func (fw *Firewall) loadRules() {
 			if fw.logger != nil {
 				fw.logger.LogWarning("RULES", "Using default rules (file not found), creating: %s", fw.rulesFile)
 			}
-			// Crea il file con le regole di default
 			fw.saveRulesToFile(fw.rules)
 		}
 		fw.rulesMutex.Unlock()
 		return
 	}
 
-	if fw.rules != nil && stat.ModTime().Equal(fw.rulesModTime) {
+	fw.rulesMutex.RLock()
+	currentModTime := fw.rulesModTime
+	fw.rulesMutex.RUnlock()
+
+	if fw.rules != nil && stat.ModTime().Equal(currentModTime) {
 		return
 	}
 
@@ -122,7 +126,7 @@ func (fw *Firewall) loadRules() {
 	var tempRules Rules
 	if err := json.Unmarshal(data, &tempRules); err != nil {
 		if fw.logger != nil {
-			fw.logger.LogError("RULES", "Failed to parse rules JSON: %v", err)
+			fw.logger.LogError("RULES", "Failed to parse rules JSON: %v - keeping current rules", err)
 		}
 		return
 	}
@@ -223,6 +227,16 @@ func (fw *Firewall) isRateLimited(ip string) bool {
 	fw.attemptsMutex.Lock()
 	defer fw.attemptsMutex.Unlock()
 
+	if len(fw.connectionAttempts) >= MaxTrackedIPs {
+		for oldIP := range fw.connectionAttempts {
+			delete(fw.connectionAttempts, oldIP)
+			if fw.logger != nil {
+				fw.logger.LogWarning("RATELIMIT", "Dropped tracking for IP %s due to memory limits", oldIP)
+			}
+			break
+		}
+	}
+
 	attempts := fw.connectionAttempts[ip]
 
 	var validAttempts []time.Time
@@ -250,10 +264,18 @@ func (fw *Firewall) cleanupOldAttempts() {
 	fw.attemptsMutex.Lock()
 	defer fw.attemptsMutex.Unlock()
 
+	forceCleanup := len(fw.connectionAttempts) > ForceCleanupThreshold
+
 	for ip, attempts := range fw.connectionAttempts {
 		var validAttempts []time.Time
+
+		cleanupWindow := window
+		if forceCleanup {
+			cleanupWindow = 30 * time.Second
+		}
+
 		for _, attempt := range attempts {
-			if now.Sub(attempt) < window {
+			if now.Sub(attempt) < cleanupWindow {
 				validAttempts = append(validAttempts, attempt)
 			}
 		}
@@ -266,8 +288,29 @@ func (fw *Firewall) cleanupOldAttempts() {
 		}
 	}
 
+	if len(fw.connectionAttempts) > MaxTrackedIPs {
+		excess := len(fw.connectionAttempts) - MaxTrackedIPs
+		count := 0
+		for ip := range fw.connectionAttempts {
+			if count >= excess {
+				break
+			}
+			delete(fw.connectionAttempts, ip)
+			deletedEntries++
+			count++
+		}
+
+		if fw.logger != nil {
+			fw.logger.LogWarning("RATELIMIT", "Force cleanup: removed %d excess IP entries", excess)
+		}
+	}
+
 	if fw.logger != nil && deletedEntries > 0 {
 		fw.logger.LogCleanup(deletedEntries)
+	}
+
+	if len(fw.connectionAttempts) > ForceCleanupThreshold && fw.logger != nil {
+		fw.logger.LogWarning("RATELIMIT", "High IP tracking usage: %d/%d IPs", len(fw.connectionAttempts), MaxTrackedIPs)
 	}
 }
 
@@ -280,19 +323,36 @@ func (fw *Firewall) attemptsCleanupWatcher() {
 	}
 }
 
-func (fw *Firewall) forwardData(src, dst net.Conn, wg *sync.WaitGroup) {
+func (fw *Firewall) forwardData(src, dst net.Conn, direction string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	_, err := io.Copy(dst, src)
+	src.SetReadDeadline(time.Now().Add(30 * time.Second))
+	dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
+
+	written, err := io.Copy(dst, src)
 	if err != nil {
-		if fw.logger != nil {
-			fw.logger.LogDebug("PROXY", "Forward error: %v", err)
+		if fw.logger != nil && !isConnectionClosed(err) {
+			fw.logger.LogDebug("PROXY", "Forward error (%s): %v", direction, err)
 		}
 	}
 
 	if tcpConn, ok := dst.(*net.TCPConn); ok {
 		tcpConn.CloseWrite()
 	}
+
+	if fw.logger != nil && written > 0 {
+		fw.logger.LogDebug("PROXY", "Forwarded %d bytes (%s)", written, direction)
+	}
+}
+
+func isConnectionClosed(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "use of closed network connection") ||
+		strings.Contains(errStr, "connection reset by peer") ||
+		strings.Contains(errStr, "broken pipe")
 }
 
 func (fw *Firewall) handleConnection(conn net.Conn) {
@@ -346,8 +406,8 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go fw.forwardData(conn, proxyConn, &wg)
-	go fw.forwardData(proxyConn, conn, &wg)
+	go fw.forwardData(conn, proxyConn, "client->proxy", &wg)
+	go fw.forwardData(proxyConn, conn, "proxy->client", &wg)
 
 	wg.Wait()
 	fw.logger.LogConnection(ip, clientAddr.Port, "CLOSED")
