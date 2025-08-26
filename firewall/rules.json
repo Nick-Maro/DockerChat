@@ -1,8 +1,9 @@
 {
-  "blocked_ips": [
-    "192.168.1.10",
-    "10.0.0.5"
+  "blocked_ips": [],
+  "whitelist": [
+    "127.0.0.1",
+    "::1"
   ],
-  "allowed_ports": [8080, 80, 443],
-  "max_attempts_per_minute": 750
+  "allowed_ports": [80, 443, 8080, 5000, 5001, 6379],
+  "max_attempts_per_minute": 100
 }
