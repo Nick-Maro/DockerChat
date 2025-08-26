@@ -1,10 +1,19 @@
-FROM python:3.10-alpine
+FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
+COPY go.mod ./
+RUN go mod download
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt python-dotenv
+COPY firewall.go ./
+RUN CGO_ENABLED=0 GOOS=linux go build -o firewall firewall.go
 
-COPY . .
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates wget
+WORKDIR /root/
 
-CMD ["python", "firewall.py"]
+COPY --from=builder /app/firewall .
+COPY rules.json ./
+
+EXPOSE 5001
+
+CMD ["./firewall"]
