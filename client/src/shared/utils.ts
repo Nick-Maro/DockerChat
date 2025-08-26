@@ -20,17 +20,14 @@ export async function generateKeyPair(): Promise<{ publicKeyPem: string, private
     return { publicKeyPem: pem, privateKey: keyPair.privateKey };
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+
 export async function signMessage(privateKey: CryptoKey, message: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const dataToSign = encoder.encode(message); // <-- Sign the raw string
-
-    const signature = await crypto.subtle.sign(
-        { name: "RSASSA-PKCS1-v1_5" },
-        privateKey,
-        dataToSign
-    );
-
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+  const encoded = new TextEncoder().encode(message);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, encoded);
+  return arrayBufferToBase64(signature);
 }
 
 export async function getOrCreatePublicKey(): Promise<string> {
