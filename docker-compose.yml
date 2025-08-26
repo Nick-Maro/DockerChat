@@ -24,14 +24,15 @@ services:
     depends_on:
       - client
       - server
+    ports:
+      - "${REVERSE_PROXY_PORT}:8080"
     networks:
       - clients
       - servers
     volumes:
-      - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
       - shared_logs:/var/log/shared
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${REVERSE_PROXY_PORT}"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 30s
       timeout: 3s
       retries: 3
