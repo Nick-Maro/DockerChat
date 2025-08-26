@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type Firewall struct {
 	rulesModTime       time.Time
 	connectionAttempts map[string][]time.Time
 	attemptsMutex      sync.RWMutex
+	logger             *FirewallLogger
 
 	firewallPort int
 	proxyHost    string
@@ -42,13 +44,22 @@ type Firewall struct {
 
 func NewFirewall() *Firewall {
 	fw := &Firewall{
-		rulesFile:          "rules.json",
+		rulesFile:          "/var/log/shared/firewall/rules.json",
 		connectionAttempts: make(map[string][]time.Time),
 		firewallPort:       getEnvInt("FIREWALL_PORT", DefaultFirewallPort),
 		proxyHost:          getEnv("REVERSE_PROXY_IP", "reverse-proxy"),
 		proxyPort:          getEnvInt("REVERSE_PROXY_PORT", DefaultProxyPort),
 	}
+
+	// Inizializza il logger
+	logger, err := NewFirewallLogger()
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	fw.logger = logger
+
 	fw.loadRules()
+	fw.logger.LogStartup("Firewall initialized - Port: %d, Proxy: %s:%d", fw.firewallPort, fw.proxyHost, fw.proxyPort)
 	return fw
 }
 
@@ -78,12 +89,19 @@ func (fw *Firewall) defaultRules() *Rules {
 }
 
 func (fw *Firewall) loadRules() {
+	// Assicurati che la directory esista
+	os.MkdirAll(filepath.Dir(fw.rulesFile), 0755)
+
 	stat, err := os.Stat(fw.rulesFile)
 	if err != nil {
 		fw.rulesMutex.Lock()
 		if fw.rules == nil {
 			fw.rules = fw.defaultRules()
-			log.Printf("[RULES] Using default rules (file not found)")
+			if fw.logger != nil {
+				fw.logger.LogWarning("RULES", "Using default rules (file not found), creating: %s", fw.rulesFile)
+			}
+			// Crea il file con le regole di default
+			fw.saveRulesToFile(fw.rules)
 		}
 		fw.rulesMutex.Unlock()
 		return
@@ -95,13 +113,17 @@ func (fw *Firewall) loadRules() {
 
 	data, err := os.ReadFile(fw.rulesFile)
 	if err != nil {
-		log.Printf("[ERROR] Failed to read rules file: %v", err)
+		if fw.logger != nil {
+			fw.logger.LogError("RULES", "Failed to read rules file: %v", err)
+		}
 		return
 	}
 
 	var tempRules Rules
 	if err := json.Unmarshal(data, &tempRules); err != nil {
-		log.Printf("[ERROR] Failed to parse rules JSON: %v", err)
+		if fw.logger != nil {
+			fw.logger.LogError("RULES", "Failed to parse rules JSON: %v", err)
+		}
 		return
 	}
 
@@ -117,8 +139,32 @@ func (fw *Firewall) loadRules() {
 	fw.rulesModTime = stat.ModTime()
 	fw.rulesMutex.Unlock()
 
-	log.Printf("[RULES] Loaded rules: blocked_ips=%d, whitelist=%d, allowed_ports=%v, max_attempts=%d",
-		len(tempRules.BlockedIPs), len(tempRules.Whitelist), tempRules.AllowedPorts, tempRules.MaxAttemptsPerMinute)
+	if fw.logger != nil {
+		fw.logger.LogRulesReload(len(tempRules.BlockedIPs), len(tempRules.Whitelist), tempRules.AllowedPorts, tempRules.MaxAttemptsPerMinute)
+	}
+}
+
+func (fw *Firewall) saveRulesToFile(rules *Rules) error {
+	data, err := json.MarshalIndent(rules, "", "  ")
+	if err != nil {
+		if fw.logger != nil {
+			fw.logger.LogError("RULES", "Failed to marshal rules: %v", err)
+		}
+		return err
+	}
+
+	err = os.WriteFile(fw.rulesFile, data, 0644)
+	if err != nil {
+		if fw.logger != nil {
+			fw.logger.LogError("RULES", "Failed to write rules file: %v", err)
+		}
+		return err
+	}
+
+	if fw.logger != nil {
+		fw.logger.LogDebug("RULES", "Rules saved to: %s", fw.rulesFile)
+	}
+	return nil
 }
 
 func (fw *Firewall) rulesWatcher() {
@@ -199,6 +245,7 @@ func (fw *Firewall) isRateLimited(ip string) bool {
 func (fw *Firewall) cleanupOldAttempts() {
 	now := time.Now()
 	window := time.Minute
+	deletedEntries := 0
 
 	fw.attemptsMutex.Lock()
 	defer fw.attemptsMutex.Unlock()
@@ -213,9 +260,14 @@ func (fw *Firewall) cleanupOldAttempts() {
 
 		if len(validAttempts) == 0 {
 			delete(fw.connectionAttempts, ip)
+			deletedEntries++
 		} else {
 			fw.connectionAttempts[ip] = validAttempts
 		}
+	}
+
+	if fw.logger != nil && deletedEntries > 0 {
+		fw.logger.LogCleanup(deletedEntries)
 	}
 }
 
@@ -233,7 +285,9 @@ func (fw *Firewall) forwardData(src, dst net.Conn, wg *sync.WaitGroup) {
 
 	_, err := io.Copy(dst, src)
 	if err != nil {
-		log.Printf("[DEBUG] Forward error: %v", err)
+		if fw.logger != nil {
+			fw.logger.LogDebug("PROXY", "Forward error: %v", err)
+		}
 	}
 
 	if tcpConn, ok := dst.(*net.TCPConn); ok {
@@ -247,18 +301,18 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	clientAddr := conn.RemoteAddr().(*net.TCPAddr)
 	ip := clientAddr.IP.String()
 
-	log.Printf("[DEBUG] Incoming connection from %s:%d", ip, clientAddr.Port)
+	fw.logger.LogConnection(ip, clientAddr.Port, "INCOMING")
 
 	if fw.isWhitelisted(ip) {
-		log.Printf("[WHITELIST] %s allowed by whitelist", ip)
+		fw.logger.LogWhitelist(ip)
 	} else {
 		if fw.isBlocked(ip) {
-			log.Printf("[BLOCKED] Connection from %s blocked by config", ip)
+			fw.logger.LogBlocked(ip, "blocked by configuration")
 			return
 		}
 
 		if !fw.isAllowedPort(fw.proxyPort) {
-			log.Printf("[BLOCKED] Destination port %d not allowed by rules. Rejecting %s", fw.proxyPort, ip)
+			fw.logger.LogBlocked(ip, "destination port not allowed", fw.proxyPort)
 			return
 		}
 
@@ -266,20 +320,28 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 			fw.rulesMutex.RLock()
 			maxAttempts := fw.rules.MaxAttemptsPerMinute
 			fw.rulesMutex.RUnlock()
-			log.Printf("[BLOCKED - RATE LIMIT] %s exceeded %d attempts/min", ip, maxAttempts)
+
+			fw.attemptsMutex.RLock()
+			currentAttempts := len(fw.connectionAttempts[ip])
+			fw.attemptsMutex.RUnlock()
+
+			fw.logger.LogRateLimit(ip, currentAttempts, maxAttempts)
 			return
 		}
 	}
 
-	log.Printf("[ALLOWED] Connection from %s -> proxying to %s:%d", ip, fw.proxyHost, fw.proxyPort)
-
 	proxyAddr := net.JoinHostPort(fw.proxyHost, strconv.Itoa(fw.proxyPort))
+	fw.logger.LogAllowed(ip, proxyAddr)
+
 	proxyConn, err := net.DialTimeout("tcp", proxyAddr, 5*time.Second)
 	if err != nil {
-		log.Printf("[ERROR] Cannot connect to reverse proxy %s - %v", proxyAddr, err)
+		fw.logger.LogProxy(ip, fw.proxyHost, fw.proxyPort, "CONNECTION_FAILED")
+		fw.logger.LogError("PROXY", "Cannot connect to reverse proxy %s - %v", proxyAddr, err)
 		return
 	}
 	defer proxyConn.Close()
+
+	fw.logger.LogProxy(ip, fw.proxyHost, fw.proxyPort, "CONNECTED")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -288,7 +350,7 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	go fw.forwardData(proxyConn, conn, &wg)
 
 	wg.Wait()
-	log.Printf("[CLOSED] Connection %s", ip)
+	fw.logger.LogConnection(ip, clientAddr.Port, "CLOSED")
 }
 
 func (fw *Firewall) Start() error {
@@ -301,13 +363,12 @@ func (fw *Firewall) Start() error {
 	}
 	defer listener.Close()
 
-	log.Printf("[FIREWALL] Listening on 0.0.0.0:%d -> proxy %s:%d",
-		fw.firewallPort, fw.proxyHost, fw.proxyPort)
+	fw.logger.LogStartup("Firewall listening on 0.0.0.0:%d -> proxy %s:%d", fw.firewallPort, fw.proxyHost, fw.proxyPort)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("[ERROR] Accept failed: %v", err)
+			fw.logger.LogError("FIREWALL", "Accept failed: %v", err)
 			continue
 		}
 
@@ -317,8 +378,10 @@ func (fw *Firewall) Start() error {
 
 func main() {
 	firewall := NewFirewall()
+	defer firewall.logger.Close()
 
 	if err := firewall.Start(); err != nil {
+		firewall.logger.LogError("FIREWALL", "Failed to start: %v", err)
 		log.Fatalf("[FIREWALL] Failed to start: %v", err)
 	}
 }
