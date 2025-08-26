@@ -7,10 +7,12 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -22,6 +24,10 @@ const (
 	DefaultProxyPort      = 8080
 	MaxTrackedIPs         = 10000
 	ForceCleanupThreshold = 8000
+	LogSpamInterval       = 1 * time.Minute
+	MaxConcurrentConns    = 1000
+	ConnectionTimeout     = 30 * time.Second
+	ProxyConnectTimeout   = 10 * time.Second
 )
 
 type Rules struct {
@@ -33,6 +39,7 @@ type Rules struct {
 
 type Firewall struct {
 	rules              *Rules
+	parsedRules        *ParsedRules
 	rulesMutex         sync.RWMutex
 	rulesFile          string
 	rulesModTime       time.Time
@@ -43,6 +50,15 @@ type Firewall struct {
 	firewallPort int
 	proxyHost    string
 	proxyPort    int
+
+	lastErrorLog  map[string]time.Time
+	errorLogMutex sync.RWMutex
+
+	shutdown    chan bool
+	listener    net.Listener
+	activeConns sync.WaitGroup
+	connCounter int64
+	connMutex   sync.RWMutex
 }
 
 func NewFirewall() *Firewall {
@@ -52,6 +68,8 @@ func NewFirewall() *Firewall {
 		firewallPort:       getEnvInt("FIREWALL_PORT", DefaultFirewallPort),
 		proxyHost:          getEnv("REVERSE_PROXY_IP", "reverse-proxy"),
 		proxyPort:          getEnvInt("REVERSE_PROXY_PORT", DefaultProxyPort),
+		lastErrorLog:       make(map[string]time.Time),
+		shutdown:           make(chan bool),
 	}
 
 	logger, err := NewFirewallLogger()
@@ -61,8 +79,38 @@ func NewFirewall() *Firewall {
 	fw.logger = logger
 
 	fw.loadRules()
+
+	if err := fw.validateConfiguration(); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
 	fw.logger.LogStartup("Firewall initialized - Port: %d, Proxy: %s:%d", fw.firewallPort, fw.proxyHost, fw.proxyPort)
 	return fw
+}
+
+func (fw *Firewall) validateConfiguration() error {
+	if fw.firewallPort <= 0 || fw.firewallPort > 65535 {
+		return fmt.Errorf("invalid firewall port: %d", fw.firewallPort)
+	}
+
+	if fw.proxyPort <= 0 || fw.proxyPort > 65535 {
+		return fmt.Errorf("invalid proxy port: %d", fw.proxyPort)
+	}
+
+	if fw.proxyHost == "" {
+		return fmt.Errorf("proxy host cannot be empty")
+	}
+
+	proxyAddr := net.JoinHostPort(fw.proxyHost, strconv.Itoa(fw.proxyPort))
+	conn, err := net.DialTimeout("tcp", proxyAddr, 3*time.Second)
+	if err != nil {
+		fw.logger.LogWarning("STARTUP", "Cannot reach proxy %s: %v", proxyAddr, err)
+	} else {
+		conn.Close()
+		fw.logger.LogStartup("Proxy connectivity verified: %s", proxyAddr)
+	}
+
+	return nil
 }
 
 func getEnv(key, defaultValue string) string {
@@ -79,6 +127,23 @@ func getEnvInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+func (fw *Firewall) logErrorRateLimited(key, category, msg string, args ...interface{}) {
+	fw.errorLogMutex.Lock()
+	defer fw.errorLogMutex.Unlock()
+
+	now := time.Now()
+	if lastLog, exists := fw.lastErrorLog[key]; exists {
+		if now.Sub(lastLog) < LogSpamInterval {
+			return
+		}
+	}
+
+	fw.lastErrorLog[key] = now
+	if fw.logger != nil {
+		fw.logger.LogError(category, msg, args...)
+	}
 }
 
 func (fw *Firewall) defaultRules() *Rules {
@@ -98,6 +163,7 @@ func (fw *Firewall) loadRules() {
 		fw.rulesMutex.Lock()
 		if fw.rules == nil {
 			fw.rules = fw.defaultRules()
+			fw.parsedRules = ParseRules(fw.rules)
 			if fw.logger != nil {
 				fw.logger.LogWarning("RULES", "Using default rules (file not found), creating: %s", fw.rulesFile)
 			}
@@ -117,17 +183,13 @@ func (fw *Firewall) loadRules() {
 
 	data, err := os.ReadFile(fw.rulesFile)
 	if err != nil {
-		if fw.logger != nil {
-			fw.logger.LogError("RULES", "Failed to read rules file: %v", err)
-		}
+		fw.logErrorRateLimited("rules_read", "RULES", "Failed to read rules file: %v", err)
 		return
 	}
 
 	var tempRules Rules
 	if err := json.Unmarshal(data, &tempRules); err != nil {
-		if fw.logger != nil {
-			fw.logger.LogError("RULES", "Failed to parse rules JSON: %v - keeping current rules", err)
-		}
+		fw.logErrorRateLimited("rules_parse", "RULES", "Failed to parse rules JSON: %v - keeping current rules", err)
 		return
 	}
 
@@ -140,6 +202,7 @@ func (fw *Firewall) loadRules() {
 
 	fw.rulesMutex.Lock()
 	fw.rules = &tempRules
+	fw.parsedRules = ParseRules(&tempRules)
 	fw.rulesModTime = stat.ModTime()
 	fw.rulesMutex.Unlock()
 
@@ -184,10 +247,8 @@ func (fw *Firewall) isWhitelisted(ip string) bool {
 	fw.rulesMutex.RLock()
 	defer fw.rulesMutex.RUnlock()
 
-	for _, whiteIP := range fw.rules.Whitelist {
-		if ip == whiteIP {
-			return true
-		}
+	if fw.parsedRules != nil {
+		return fw.parsedRules.IsWhitelisted(ip)
 	}
 	return false
 }
@@ -196,10 +257,8 @@ func (fw *Firewall) isBlocked(ip string) bool {
 	fw.rulesMutex.RLock()
 	defer fw.rulesMutex.RUnlock()
 
-	for _, blockedIP := range fw.rules.BlockedIPs {
-		if ip == blockedIP {
-			return true
-		}
+	if fw.parsedRules != nil {
+		return fw.parsedRules.IsBlocked(ip)
 	}
 	return false
 }
@@ -208,16 +267,10 @@ func (fw *Firewall) isAllowedPort(port int) bool {
 	fw.rulesMutex.RLock()
 	defer fw.rulesMutex.RUnlock()
 
-	if len(fw.rules.AllowedPorts) == 0 {
-		return true
+	if fw.parsedRules != nil {
+		return fw.parsedRules.IsAllowedPort(port)
 	}
-
-	for _, allowedPort := range fw.rules.AllowedPorts {
-		if port == allowedPort {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 func (fw *Firewall) isRateLimited(ip string) bool {
@@ -326,8 +379,8 @@ func (fw *Firewall) attemptsCleanupWatcher() {
 func (fw *Firewall) forwardData(src, dst net.Conn, direction string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	src.SetReadDeadline(time.Now().Add(30 * time.Second))
-	dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	src.SetReadDeadline(time.Now().Add(ConnectionTimeout))
+	dst.SetWriteDeadline(time.Now().Add(ConnectionTimeout))
 
 	written, err := io.Copy(dst, src)
 	if err != nil {
@@ -357,6 +410,25 @@ func isConnectionClosed(err error) bool {
 
 func (fw *Firewall) handleConnection(conn net.Conn) {
 	defer conn.Close()
+	defer fw.activeConns.Done()
+
+	fw.connMutex.Lock()
+	currentConns := fw.connCounter
+	if currentConns >= MaxConcurrentConns {
+		fw.connMutex.Unlock()
+		fw.logger.LogError("FIREWALL", "Max concurrent connections reached (%d), dropping connection", MaxConcurrentConns)
+		return
+	}
+	fw.connCounter++
+	fw.connMutex.Unlock()
+
+	defer func() {
+		fw.connMutex.Lock()
+		fw.connCounter--
+		fw.connMutex.Unlock()
+	}()
+
+	conn.SetDeadline(time.Now().Add(ConnectionTimeout))
 
 	clientAddr := conn.RemoteAddr().(*net.TCPAddr)
 	ip := clientAddr.IP.String()
@@ -393,7 +465,7 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	proxyAddr := net.JoinHostPort(fw.proxyHost, strconv.Itoa(fw.proxyPort))
 	fw.logger.LogAllowed(ip, proxyAddr)
 
-	proxyConn, err := net.DialTimeout("tcp", proxyAddr, 5*time.Second)
+	proxyConn, err := net.DialTimeout("tcp", proxyAddr, ProxyConnectTimeout)
 	if err != nil {
 		fw.logger.LogProxy(ip, fw.proxyHost, fw.proxyPort, "CONNECTION_FAILED")
 		fw.logger.LogError("PROXY", "Cannot connect to reverse proxy %s - %v", proxyAddr, err)
@@ -421,19 +493,46 @@ func (fw *Firewall) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %v", fw.firewallPort, err)
 	}
-	defer listener.Close()
+	fw.listener = listener
 
 	fw.logger.LogStartup("Firewall listening on 0.0.0.0:%d -> proxy %s:%d", fw.firewallPort, fw.proxyHost, fw.proxyPort)
 
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fw.logger.LogError("FIREWALL", "Accept failed: %v", err)
-			continue
-		}
+	go fw.handleSignals()
 
-		go fw.handleConnection(conn)
+	for {
+		select {
+		case <-fw.shutdown:
+			fw.logger.LogStartup("Shutdown signal received, stopping firewall...")
+			listener.Close()
+			fw.logger.LogStartup("Waiting for active connections to finish...")
+			fw.activeConns.Wait()
+			fw.logger.LogStartup("Firewall stopped gracefully")
+			return nil
+		default:
+			conn, err := listener.Accept()
+			if err != nil {
+				select {
+				case <-fw.shutdown:
+					return nil
+				default:
+					fw.logger.LogError("FIREWALL", "Accept failed: %v", err)
+					continue
+				}
+			}
+
+			fw.activeConns.Add(1)
+			go fw.handleConnection(conn)
+		}
 	}
+}
+
+func (fw *Firewall) handleSignals() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	sig := <-sigChan
+	fw.logger.LogStartup("Received signal: %v", sig)
+	close(fw.shutdown)
 }
 
 func main() {
