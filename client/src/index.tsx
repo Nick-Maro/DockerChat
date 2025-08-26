@@ -1,13 +1,17 @@
 import { render } from 'preact';
 import { LocationProvider, Router, Route } from 'preact-iso';
-
-import { Home } from './pages/Home/index.js';
-import { NotFound } from './pages/_404.js';
 import './style.css';
-import { ClientProvider } from './shared/authContext.js';
+
+// providers
+import { ClientProvider, useClient } from './shared/authContext.js';
 import { ChatProvider } from './shared/chatContext.js';
 import { SocketProvider } from './shared/webSocketContext.js';
 import { UnreadProvider } from './shared/unreadMessagesContext';
+
+// pages
+import { Home } from './pages/Home/index.js';
+import { NotFound } from './pages/_404.js';
+
 
 export function App(){
 	return (
@@ -15,23 +19,40 @@ export function App(){
 
 			<SocketProvider>
 				<ClientProvider>
-					 <UnreadProvider>
-					<ChatProvider>
-			
-						<main>
-							<Router>
-								<Route path="/" component={Home} />
-								<Route default component={NotFound} />
-							</Router>
-						</main>
+					<UnreadProvider>
+						<ChatProvider>
+				
+							<InnerApp />
 
-					</ChatProvider>
+						</ChatProvider>
 					</UnreadProvider>
 				</ClientProvider>
 			</SocketProvider>
 
 		</LocationProvider>
 	);
+}
+
+function InnerApp(){
+	const { loading } = useClient();
+	
+	if(loading){
+		return (
+			<div className="loading-screen center-flex column">
+				<div className="spinner"></div>
+				<p>Loading…</p>
+			</div>
+		);
+	}
+
+	return (
+		<main>
+			<Router>
+				<Route path="/" component={Home} />
+				<Route default component={NotFound} />
+			</Router>
+		</main>
+	)
 }
 
 render(<App />, document.getElementById('app'));
