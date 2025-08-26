@@ -8,12 +8,17 @@
 .dm ul li .name{justify-content: space-between;}
 .dm ul li .name h3{font-weight: 300;}
 .dm ul li .name p{font-size: 12px;}
-
-.onlineBadge{
-    width: 10px; height: 10px;
-    position: absolute;
-    top: 2px; left: 33px;
-    display: block;
-    border-radius: 50%;
-    background-color: green;
+.dm ul li .nameWithBadge { display: flex;align-items: center;gap: 8px;}
+.dm ul li .nameContainer h3 {font-weight: 300;margin: 0;}
+.dm ul li .nameContainer .rightInfo {display: flex;align-items: center;}
+.dm ul li .nameContainer .rightInfo p {font-size: 12px;margin: 0; color: #666;}
+.onlineBadge {width: 10px;height: 10px;position: absolute;top: 2px;left: 33px;display: block;border-radius: 50%;background-color: green;}
+.unreadBadge {display: inline-flex;align-items: center;justify-content: center;min-width: 18px;height: 18px;padding: 0 6px;background-color: #ef4444;color: white;border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    flex-shrink: 0;
 }
+.dm ul li .nameContainer h3 {font-weight: 300;margin: 0;}
+.flex {display: flex;}
+.column {flex-direction: column;}
