@@ -7,7 +7,7 @@ import './style.css';
 import { ClientProvider } from './shared/authContext.js';
 import { ChatProvider } from './shared/chatContext.js';
 import { SocketProvider } from './shared/webSocketContext.js';
-
+import { UnreadProvider } from './shared/unreadMessagesContext';
 
 export function App(){
 	return (
@@ -15,6 +15,7 @@ export function App(){
 
 			<SocketProvider>
 				<ClientProvider>
+					 <UnreadProvider>
 					<ChatProvider>
 			
 						<main>
@@ -25,6 +26,7 @@ export function App(){
 						</main>
 
 					</ChatProvider>
+					</UnreadProvider>
 				</ClientProvider>
 			</SocketProvider>
 
