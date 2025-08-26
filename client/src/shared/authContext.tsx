@@ -6,29 +6,24 @@ import { ClientContextType } from '../types';
 
 const ClientContext = createContext<ClientContextType | null>(null);
 
-// check if the username is valid (letters, numbers, _ and - , 3-16 chars)
+
 const validateUsername = (username: string): boolean => {
   const regex = /^[a-zA-Z0-9_-]{3,16}$/;
   return regex.test(username);
 };
 
-// ask the user for a username until it's valid
 const promptForValidUsername = (): string | null => {
   let username = null;
   
-  while (!username) {
+  while(!username){
     const input = prompt("Enter a username (3-16 characters, letters/numbers/_-):")?.trim();
     
-    if (input === null) {
-      return null; // user canceled
-    }
-    
-    if (!input) {
+    if(input === null) return null;
+    if(!input){
       alert("Username cannot be empty!");
       continue;
     }
-    
-    if (!validateUsername(input)) {
+    if(!validateUsername(input)){
       alert("Invalid username! It must be 3-16 characters long and contain only letters, numbers, underscores, and hyphens.");
       continue;
     }
@@ -127,7 +122,6 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
   }, [username, status, sendMessage]);
 
   return (
-    // provide username + loading state to the app
     <ClientContext.Provider value={{ username, loading }}>
       {children}
     </ClientContext.Provider>
