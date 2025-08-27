@@ -212,29 +212,6 @@ func (fw *Firewall) loadRules() {
 	}
 }
 
-func (fw *Firewall) saveRulesToFile(rules *Rules) error {
-	data, err := json.MarshalIndent(rules, "", "  ")
-	if err != nil {
-		if fw.logger != nil {
-			fw.logger.LogError("RULES", "Failed to marshal rules: %v", err)
-		}
-		return err
-	}
-
-	err = os.WriteFile(fw.rulesFile, data, 0644)
-	if err != nil {
-		if fw.logger != nil {
-			fw.logger.LogError("RULES", "Failed to write rules file: %v", err)
-		}
-		return err
-	}
-
-	if fw.logger != nil {
-		fw.logger.LogDebug("RULES", "Rules saved to: %s", fw.rulesFile)
-	}
-	return nil
-}
-
 func (fw *Firewall) rulesWatcher() {
 	ticker := time.NewTicker(RulesReloadInterval)
 	defer ticker.Stop()
