@@ -10,6 +10,7 @@ services:
       - "${FIREWALL_PORT}:${FIREWALL_PORT}"
     volumes:
       - shared_logs:/var/log/shared
+      - ./firewall/rules.json:/var/log/shared/firewall/rules.json:Z
     env_file:
       - .env
     networks:
@@ -126,6 +127,7 @@ services:
     volumes:
       - redis_data:/app/redis_data:ro
       - shared_logs:/var/log/shared
+      - ./firewall/rules.json:/var/log/shared/firewall/rules.json:Z
     env_file:
       - .env
     healthcheck:

@@ -58,11 +58,43 @@ def firewall():
                 
         return redirect(url_for("firewall"))
         
+    # Default rules structure
+    default_rules = {
+        "blocked_ips": [],
+        "whitelist": ["127.0.0.1", "::1"],
+        "allowed_ports": [80, 443, 8080, 5000, 5001, 6379],
+        "max_attempts_per_minute": 100
+    }
+    
     if os.path.exists(FIREWALL_RULES_PATH):
-        with open(FIREWALL_RULES_PATH, "r") as f:
-            rules = json.load(f)
+        try:
+            with open(FIREWALL_RULES_PATH, "r") as f:
+                content = f.read().strip()
+                if not content:  # Empty file
+                    rules = default_rules
+                    # Write default rules to empty file
+                    with open(FIREWALL_RULES_PATH, "w") as f:
+                        json.dump(rules, f, indent=4)
+                else:
+                    rules = json.loads(content)
+        except (json.JSONDecodeError, IOError) as e:
+            flash(f"Warning: Rules file corrupted ({e}), using defaults", "warning")
+            rules = default_rules
+            # Try to restore the file with default rules
+            try:
+                with open(FIREWALL_RULES_PATH, "w") as f:
+                    json.dump(rules, f, indent=4)
+            except:
+                pass  # If we can't write, just use defaults in memory
     else:
-        rules = {}
+        rules = default_rules
+        # Create the file with default rules
+        try:
+            os.makedirs(os.path.dirname(FIREWALL_RULES_PATH), exist_ok=True)
+            with open(FIREWALL_RULES_PATH, "w") as f:
+                json.dump(rules, f, indent=4)
+        except:
+            pass  # If we can't write, just use defaults in memory
         
     return render_template("firewall.html", rules=json.dumps(rules, indent=4))
 

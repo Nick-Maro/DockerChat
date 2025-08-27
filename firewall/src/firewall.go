@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -165,9 +166,9 @@ func (fw *Firewall) loadRules() {
 			fw.rules = fw.defaultRules()
 			fw.parsedRules = ParseRules(fw.rules)
 			if fw.logger != nil {
-				fw.logger.LogWarning("RULES", "Using default rules (file not found), creating: %s", fw.rulesFile)
+				fw.logger.LogWarning("RULES", "Using default rules (file not found), but NOT overwriting existing file: %s", fw.rulesFile)
 			}
-			fw.saveRulesToFile(fw.rules)
+			// Don't save default rules to file - preserve user's file
 		}
 		fw.rulesMutex.Unlock()
 		return
@@ -271,6 +272,60 @@ func (fw *Firewall) isAllowedPort(port int) bool {
 		return fw.parsedRules.IsAllowedPort(port)
 	}
 	return true
+}
+
+// extractRequestedPort reads the HTTP request and extracts the port from Host header
+func (fw *Firewall) extractRequestedPort(conn net.Conn) (int, []byte, error) {
+	// Set a short timeout for reading the request
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer conn.SetReadDeadline(time.Time{}) // Reset deadline
+
+	reader := bufio.NewReader(conn)
+
+	// Read the first line (request line)
+	firstLine, err := reader.ReadString('\n')
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// Buffer to store the complete request
+	var requestBuffer []byte
+	requestBuffer = append(requestBuffer, []byte(firstLine)...)
+
+	// Read headers
+	var hostHeader string
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return 0, nil, err
+		}
+		requestBuffer = append(requestBuffer, []byte(line)...)
+
+		// Check for Host header
+		if strings.HasPrefix(strings.ToLower(line), "host:") {
+			hostHeader = strings.TrimSpace(line[5:])
+		}
+
+		// End of headers
+		if line == "\r\n" || line == "\n" {
+			break
+		}
+	}
+
+	// Extract port from host header
+	port := 80 // default
+	if hostHeader != "" {
+		if strings.Contains(hostHeader, ":") {
+			parts := strings.Split(hostHeader, ":")
+			if len(parts) >= 2 {
+				if p, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+					port = p
+				}
+			}
+		}
+	}
+
+	return port, requestBuffer, nil
 }
 
 func (fw *Firewall) isRateLimited(ip string) bool {
@@ -434,6 +489,16 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	ip := clientAddr.IP.String()
 
 	fw.logger.LogConnection(ip, clientAddr.Port, "INCOMING")
+	fw.logger.LogError("DEBUG", "Starting connection handling for IP: %s", ip)
+
+	// Extract requested port from HTTP request
+	requestedPort, requestBuffer, err := fw.extractRequestedPort(conn)
+	if err != nil {
+		fw.logger.LogError("FIREWALL", "Failed to parse HTTP request from %s: %v", ip, err)
+		return
+	}
+
+	fw.logger.LogError("DEBUG", "Extracted port %d from request by IP %s", requestedPort, ip)
 
 	if fw.isWhitelisted(ip) {
 		fw.logger.LogWhitelist(ip)
@@ -443,8 +508,8 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 			return
 		}
 
-		if !fw.isAllowedPort(fw.proxyPort) {
-			fw.logger.LogBlocked(ip, "destination port not allowed", fw.proxyPort)
+		if !fw.isAllowedPort(requestedPort) {
+			fw.logger.LogBlocked(ip, "requested port not allowed", requestedPort)
 			return
 		}
 
@@ -474,6 +539,13 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	defer proxyConn.Close()
 
 	fw.logger.LogProxy(ip, fw.proxyHost, fw.proxyPort, "CONNECTED")
+
+	// Forward the buffered request first
+	_, err = proxyConn.Write(requestBuffer)
+	if err != nil {
+		fw.logger.LogError("PROXY", "Failed to forward request buffer: %v", err)
+		return
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)

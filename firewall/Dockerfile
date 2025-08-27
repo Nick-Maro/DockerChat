@@ -14,9 +14,7 @@ RUN apk add --no-cache wget ca-certificates tzdata curl && \
     mkdir -p /var/log/shared/firewall
 WORKDIR /app
 COPY --from=builder /app/firewall ./
-COPY rules.json /var/log/shared/firewall/rules.json
 RUN mkdir -p logs && \
-    chmod 666 /var/log/shared/firewall/rules.json && \
     chmod 777 /var/log/shared/firewall
 EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
