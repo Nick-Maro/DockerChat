@@ -1,5 +1,6 @@
 export interface Client {
     id: string,
+    ecdh_key: string;
     public_key: string;
     room_id: string | null;
     last_seen: string;

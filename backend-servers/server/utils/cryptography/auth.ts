@@ -85,4 +85,13 @@ export class CryptoAuth {
             return false;
         }
     }
+
+    static validateECDHKey(ecdhKeyPem: string): boolean {
+        try {
+            const keyObject = crypto.createPublicKey(ecdhKeyPem);
+            return keyObject.asymmetricKeyType === 'ec';
+        } catch {
+            return false;
+        }
+    }
 }

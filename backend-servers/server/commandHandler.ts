@@ -90,6 +90,66 @@ export class CommandHandler {
             return;
         }
 
+        if (command === "upload_ecdh_key") {
+            const username = data.username;
+            if (!username || !/^[a-zA-Z0-9_-]{3,16}$/.test(username)) {
+                this.sendResponse(ws, { command, error: "Invalid username format", debug: debug_info });
+                return;
+            }
+
+            const existingClient = await this.dataManager.getClient(username);
+            if (!existingClient) {
+                this.sendResponse(ws, {
+                    command,
+                    error: "Client not found. Please upload public key first.",
+                    debug: debug_info
+                });
+                return;
+            }
+
+            if (!data.ecdh_key || !CryptoAuth.validateECDHKey(data.ecdh_key)) {
+                this.sendResponse(ws, {
+                    command: data.command,
+                    error: "Invalid ECDH key format",
+                    debug: debug_info
+                });
+                return;
+            }
+
+            const now = getCurrentISOString();
+
+            const updatedClient: Client = {
+                ...existingClient,
+                ecdh_key: data.ecdh_key,
+                last_seen: now
+            };
+
+            await storage.setClient(username, updatedClient);
+            await this.dataManager.setClientOnline(username, true, true);
+
+            ws.data.clientId = username;
+            wsClientMap.set(username, ws);
+
+            SecureSession.updateECDHKey(ws.data.wsId, username, data.ecdh_key);
+
+            this.server.publish("global", JSON.stringify({
+                event: "client_ecdh_updated",
+                client_id: username,
+                timestamp: now
+            }));
+
+            const response: WSResponse = {
+                command: command,
+                message: "ECDH key uploaded successfully!",
+                client_id: username,
+                status: "ecdh_updated",
+                debug: debug_info
+            };
+
+            this.sendResponse(ws, response);
+            return;
+        }
+
         let authResult = await AuthenticationMiddleware.authenticate(
             data,
             ws.data.clientId || '',
@@ -162,6 +222,46 @@ export class CommandHandler {
         let response: WSResponse = { command, message: "Unknown command", debug: debug_info };
 
         switch (true) {
+            case command.startsWith("get_ecdh_key:"): {
+                const target_username = command.split(":", 2)[1];
+                if (!target_username) {
+                    response.error = "Command format: get_ecdh_key:USERNAME";
+                    break;
+                }
+
+                if (!/^[a-zA-Z0-9_-]{3,16}$/.test(target_username)) {
+                    response.error = "Invalid username format";
+                    break;
+                }
+
+                if (target_username === clientId) {
+                    response.error = "Cannot request your own ECDH key";
+                    break;
+                }
+
+                const targetClient = await this.dataManager.getClient(target_username);
+                if (!targetClient) {
+                    response.error = "User not found";
+                    break;
+                }
+
+                if (!targetClient.ecdh_key) {
+                    response.error = "User has not uploaded ECDH key yet";
+                    break;
+                }
+
+                const sameRoom = currentClient.room_id && targetClient.room_id === currentClient.room_id;
+                response = {
+                    ...response,
+                    message: `ECDH key retrieved for user '${target_username}'`,
+                    target_user: target_username,
+                    ecdh_key: targetClient.ecdh_key,
+                    user_online: !!targetClient.online,
+                    same_room: sameRoom,
+                    debug: debug_info
+                };
+                break;
+            }
             case command.startsWith("create_room:"): {
                 const room_name = command.split(":", 2)[1];
                 if (!room_name) {
@@ -293,75 +393,75 @@ export class CommandHandler {
                 } else response.error = "You aren't connected to any room";
                 break;
             }
-case command.startsWith("send_private:"): {
-    const parts = command.split(":", 3);
-    if(parts.length < 3){
-        response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
-        break;
-    }
-    
-    const to_client_id = parts[1];
-    const message_text = parts[2];
-    
-    if(!message_text || !this.validateMessage(message_text)){
-        response.error = "Invalid message length";
-        break;
-    }
-    
-    const client = await this.dataManager.getClient(to_client_id);
-    
-    if(!client){
-        response.error = "Recipient Client not found";
-        break;
-    }
-    
-    const isFile = data?.file === true;
-    const filename = data?.filename;
-    const mimetype = data?.mimetype;
-    const content = data?.content;
-    
-    const message_id = await this.dataManager.addPrivateMessage(
-        client_id,
-        to_client_id,
-        message_text,
-        data?.signature,
-        isFile,
-        filename,
-        mimetype,
-        content
-    );
-    
-    const messageData = {
-        event: "private_message_received",
-        from_client: client_id,
-        to_client: to_client_id,
-        text: message_text,
-        timestamp: new Date().toISOString(),
-        verified: true,
-        file: isFile,
-        message_id: message_id
-    };
-    
-    if(isFile){
-        messageData.filename = filename;
-        messageData.mimetype = mimetype;
-        messageData.content = content;
-    }
-    
-    console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+            case command.startsWith("send_private:"): {
+                const parts = command.split(":", 3);
+                if (parts.length < 3) {
+                    response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
+                    break;
+                }
 
-    // to fix
-    this.server.publish("global", JSON.stringify(messageData));
-    
-    response = {
-        ...response,
-        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
-        message_id,
-        to_client: to_client_id,
-        file: isFile
-    };
-    break;
-}
+                const to_client_id = parts[1];
+                const message_text = parts[2];
+
+                if (!message_text || !this.validateMessage(message_text)) {
+                    response.error = "Invalid message length";
+                    break;
+                }
+
+                const client = await this.dataManager.getClient(to_client_id);
+
+                if (!client) {
+                    response.error = "Recipient Client not found";
+                    break;
+                }
+
+                const isFile = data?.file === true;
+                const filename = data?.filename;
+                const mimetype = data?.mimetype;
+                const content = data?.content;
+
+                const message_id = await this.dataManager.addPrivateMessage(
+                    client_id,
+                    to_client_id,
+                    message_text,
+                    data?.signature,
+                    isFile,
+                    filename,
+                    mimetype,
+                    content
+                );
+
+                const messageData = {
+                    event: "private_message_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    text: message_text,
+                    timestamp: new Date().toISOString(),
+                    verified: true,
+                    file: isFile,
+                    message_id: message_id
+                };
+
+                if (isFile) {
+                    messageData.filename = filename;
+                    messageData.mimetype = mimetype;
+                    messageData.content = content;
+                }
+
+                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+
+                // to fix
+                this.server.publish("global", JSON.stringify(messageData));
+
+                response = {
+                    ...response,
+                    message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
+                    message_id,
+                    to_client: to_client_id,
+                    file: isFile
+                };
+                break;
+            }
             case command === "get_private_messages": {
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
                 const my_messages = all_messages

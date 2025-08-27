@@ -228,4 +228,13 @@ export class DataManager {
         const client = await storage.getClient(clientId);
         return client?.room_id === roomId;
     }
+
+    async getClientECDHKey(clientId: string): Promise<string | null> {
+        return await storage.getClientECDHKey(clientId);
+    }
+
+    async getRoomECDHKeys(roomId: string): Promise<Map<string, string>> {
+        const clientIds = await storage.getRoomClients(roomId);
+        return await storage.getBatchClientECDHKeys(clientIds);
+    }
 }

@@ -460,6 +460,61 @@ class Storage {
             }
         }
     }
+
+    async getClientECDHKey(clientId: string): Promise<string | null> {
+        const cached = this.clientCache.get(clientId);
+        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) return cached.data.ecdh_key || null;
+
+        if (this.redis) {
+            try {
+                const clientData = await this.redis.get(this.REDIS_KEYS.CLIENT(clientId));
+                if (clientData) {
+                    const client = JSON.parse(clientData) as Client;
+                    this.clientCache.set(clientId, { data: client, timestamp: Date.now() });
+                    return client.ecdh_key || null;
+                }
+                return null;
+            } catch (error) {
+                console.error("[ERROR] Error getting client ECDH key: ", error);
+            }
+        }
+
+        const localClient = this.localClients.get(clientId);
+        return localClient?.ecdh_key || null;
+    }
+
+    async getBatchClientECDHKeys(clientIds: string[]): Promise<Map<string, string>> {
+        const result = new Map<string, string>();
+        if (clientIds.length === 0) return result;
+
+        if (this.redis) {
+            try {
+                const clientKeys = clientIds.map(id => this.REDIS_KEYS.CLIENT(id));
+                const clientsData = await this.redis.mGet(clientKeys);
+
+                clientsData.forEach((clientData, index) => {
+                    if (clientData) {
+                        const client = JSON.parse(clientData) as Client;
+                        if (client.ecdh_key) result.set(clientIds[index], client.ecdh_key);
+                        this.clientCache.set(clientIds[index], { data: client, timestamp: Date.now() });
+                    }
+                });
+            } catch (error) {
+                console.error("[ERROR] Error getting batch ECDH keys: ", error);
+                for (const clientId of clientIds) {
+                    const localClient = this.localClients.get(clientId);
+                    if (localClient?.ecdh_key) result.set(clientId, localClient.ecdh_key);
+                }
+            }
+        } else {
+            for (const clientId of clientIds) {
+                const localClient = this.localClients.get(clientId);
+                if (localClient?.ecdh_key) result.set(clientId, localClient.ecdh_key);
+            }
+        }
+
+        return result;
+    }
 }
 
 export const storage = new Storage();
