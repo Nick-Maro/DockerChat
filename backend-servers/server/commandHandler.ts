@@ -52,6 +52,7 @@ export class CommandHandler {
             const newClient: Client = {
                 id: username,
                 public_key: data.public_key,
+                ecdh_public_key: null,
                 room_id: null,
                 last_seen: now,
                 created_at: now
@@ -74,6 +75,8 @@ export class CommandHandler {
                 client_id: username,
                 timestamp: now
             }));
+
+            console.log(`[E2E] Client registered: ${username}`);
 
             const response: WSResponse = {
                 command: command,
@@ -303,6 +306,13 @@ case command.startsWith("send_private:"): {
     const to_client_id = parts[1];
     const message_text = parts[2];
     
+    console.log(`[E2E] Private message from ${client_id} to ${to_client_id}`);
+    console.log(`[E2E] Encryption data received:`, {
+        encrypted: data?.encrypted,
+        iv: data?.iv ? 'present' : 'missing',
+        sender_ecdh_key: data?.sender_ecdh_key ? 'present' : 'missing'
+    });
+    
     if(!message_text || !this.validateMessage(message_text)){
         response.error = "Invalid message length";
         break;
@@ -319,6 +329,11 @@ case command.startsWith("send_private:"): {
     const filename = data?.filename;
     const mimetype = data?.mimetype;
     const content = data?.content;
+    const isEncrypted = data?.encrypted === true;
+    const iv = data?.iv;
+    const senderEcdhKey = data?.sender_ecdh_key;
+    
+    console.log(`[E2E] Storing message - encrypted: ${isEncrypted}, iv: ${iv ? 'present' : 'missing'}`);
     
     const message_id = await this.dataManager.addPrivateMessage(
         client_id,
@@ -328,7 +343,10 @@ case command.startsWith("send_private:"): {
         isFile,
         filename,
         mimetype,
-        content
+        content,
+        isEncrypted,
+        iv,
+        senderEcdhKey
     );
     
     const messageData = {
@@ -339,7 +357,10 @@ case command.startsWith("send_private:"): {
         timestamp: new Date().toISOString(),
         verified: true,
         file: isFile,
-        message_id: message_id
+        message_id: message_id,
+        encrypted: isEncrypted,
+        iv: iv,
+        sender_ecdh_key: senderEcdhKey
     };
     
     if(isFile){
@@ -348,30 +369,38 @@ case command.startsWith("send_private:"): {
         messageData.content = content;
     }
     
-    console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
-
-    // to fix
+    console.log(`[E2E] Broadcasting message - encrypted: ${messageData.encrypted}, iv: ${messageData.iv ? 'present' : 'missing'}`);
+    console.log(`[E2E] Full message data:`, JSON.stringify(messageData, null, 2));
+    
     this.server.publish("global", JSON.stringify(messageData));
     
     response = {
         ...response,
-        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
+        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}${isEncrypted ? ' (encrypted)' : ''}`,
         message_id,
         to_client: to_client_id,
-        file: isFile
+        file: isFile,
+        encrypted: isEncrypted
     };
     break;
 }
             case command === "get_private_messages": {
+                console.log(`[E2E] Getting private messages for ${client_id}`);
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
+                console.log(`[E2E] Retrieved ${all_messages.length} messages from database`);
+                
                 const my_messages = all_messages
-                    .map(msg => ({
-                        ...msg,
-                        direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
-                        verified: !!msg.signature,
-                        file: msg.file === true 
-                    }))
+                    .map(msg => {
+                        console.log(`[E2E] Processing message: encrypted=${msg.encrypted}, iv=${msg.iv ? 'present' : 'missing'}`);
+                        return {
+                            ...msg,
+                            direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
+                            verified: !!msg.signature,
+                            file: msg.file === true 
+                        };
+                    })
                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    
                 await this.dataManager.setPrivateMessagesAsRead(client_id);
                 response = {
                     ...response,
@@ -381,6 +410,40 @@ case command.startsWith("send_private:"): {
                 };
                 break;
             }
+case command === "upload_key_ECDH": {
+    const ecdhPublicKey = data.ecdh_public_key;
+    console.log(`[E2E] ECDH key upload from ${clientId}`);
+    console.log(`[E2E] Key data:`, ecdhPublicKey ? 'present' : 'missing');
+    
+    if (!ecdhPublicKey || typeof ecdhPublicKey !== 'string') {
+        response.error = "Invalid ECDH public key format";
+        break;
+    }
+    
+    try {
+        await storage.setClientECDHKey(clientId, ecdhPublicKey);
+        console.log(`[E2E] ECDH key stored successfully for ${clientId}`);
+        
+        // Broadcast to other clients that this user now has E2E capability
+        this.server.publish("global", JSON.stringify({
+            event: "client_ecdh_key_uploaded",
+            client_id: clientId,
+            timestamp: getCurrentISOString()
+        }));
+        
+        response = {
+            ...response,
+            message: "ECDH public key uploaded successfully",
+            client_id: clientId
+        };
+    } catch (error) {
+        console.error(`[E2E] Failed to store ECDH key for ${clientId}:`, error);
+        response.error = `Failed to store ECDH key: ${error}`;
+    }
+    break;
+}
+
+        
             case command === "get_messages": {
                 const room_id = currentClient.room_id;
                 if (room_id) {
@@ -403,15 +466,21 @@ case command.startsWith("send_private:"): {
                 break;
             }
             case command === "list_clients": {
+                console.log(`[E2E] Listing clients for ${client_id}`);
                 const clients = await this.dataManager.getClients();
                 const client_list = Object.entries(clients)
                     .filter(([cid, _]) => cid !== client_id)
-                    .map(([cid, c_data]) => ({
-                        client_id: cid,
-                        room_id: c_data.room_id,
-                        last_seen: c_data.last_seen,
-                        online: !!c_data.online
-                    }));
+                    .map(([cid, c_data]) => {
+                        console.log(`[E2E] Client ${cid} ECDH key:`, c_data.ecdh_public_key ? 'present' : 'missing');
+                        return {
+                            client_id: cid,
+                            room_id: c_data.room_id,
+                            last_seen: c_data.last_seen,
+                            online: !!c_data.online,
+                            ecdh_public_key: c_data.ecdh_public_key || null
+                        };
+                    });
+                console.log(`[E2E] Returning ${client_list.length} clients with ECDH keys`);
                 response = {
                     ...response,
                     message: "List of available clients",

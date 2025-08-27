@@ -1,6 +1,7 @@
 export interface Client {
     id: string,
     public_key: string;
+    ecdh_public_key?: string | null;
     room_id: string | null;
     last_seen: string;
     created_at: string;
@@ -13,11 +14,22 @@ export interface ClientInRoom {
 }
 
 export interface Message {
-    from_client: string;
-    text: string;
-    signature?: string;
-    timestamp: string;
-    public_key: string;
+  id?: string;
+  from_client: string;
+  to_client?: string;
+  text: string;
+  timestamp: string;
+  verified?: boolean;
+  file?: boolean;
+  filename?: string;
+  mimetype?: string;
+  content?: string;
+  public_key: string;
+  encrypted?: boolean;
+  iv?: string;
+  sender_ecdh_key?: string;
+  wasEncrypted?: boolean; 
+  decryptionFailed?: boolean; 
 }
 
 export interface PrivateMessage {
@@ -32,6 +44,9 @@ export interface PrivateMessage {
     filename?: string;
     mimetype?: string;
     content?: string;
+    is_encrypted?: boolean;
+    iv?: string;  
+    sender_public_key?: string; 
 }
 
 export interface Room {
