@@ -32,7 +32,9 @@ docker compose ps
 **Important**: Before starting the project, you must configure your system's hosts file to enable subdomain routing.
 
 Add the following entries to your hosts file:
+
 **Windows**: Edit `C:\Windows\System32\drivers\etc\hosts`
+
 **Linux/macOS**: Edit `/etc/hosts`
 
 ```plaintext
