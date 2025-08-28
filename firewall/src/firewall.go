@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,9 +27,13 @@ const (
 	MaxTrackedIPs         = 10000
 	ForceCleanupThreshold = 8000
 	LogSpamInterval       = 1 * time.Minute
-	MaxConcurrentConns    = 1000
-	ConnectionTimeout     = 30 * time.Second
-	ProxyConnectTimeout   = 10 * time.Second
+	MaxConcurrentConns    = 100
+	ConnectionTimeout     = 10 * time.Second
+	ProxyConnectTimeout   = 5 * time.Second
+
+	MaxConnectionsPerIP = 5
+	SynFloodWindow      = 10 * time.Second
+	MaxSynPerWindow     = 10
 )
 
 type Rules struct {
@@ -60,6 +65,10 @@ type Firewall struct {
 	activeConns sync.WaitGroup
 	connCounter int64
 	connMutex   sync.RWMutex
+
+	activeConnsByIP map[string]int
+	synFloodTracker map[string][]time.Time
+	synFloodMutex   sync.RWMutex
 }
 
 func NewFirewall() *Firewall {
@@ -71,6 +80,8 @@ func NewFirewall() *Firewall {
 		proxyPort:          getEnvInt("REVERSE_PROXY_PORT", DefaultProxyPort),
 		lastErrorLog:       make(map[string]time.Time),
 		shutdown:           make(chan bool),
+		activeConnsByIP:    make(map[string]int),
+		synFloodTracker:    make(map[string][]time.Time),
 	}
 
 	logger, err := NewFirewallLogger()
@@ -168,7 +179,6 @@ func (fw *Firewall) loadRules() {
 			if fw.logger != nil {
 				fw.logger.LogWarning("RULES", "Using default rules (file not found), but NOT overwriting existing file: %s", fw.rulesFile)
 			}
-			// Don't save default rules to file - preserve user's file
 		}
 		fw.rulesMutex.Unlock()
 		return
@@ -251,25 +261,20 @@ func (fw *Firewall) isAllowedPort(port int) bool {
 	return true
 }
 
-// extractRequestedPort reads the HTTP request and extracts the port from Host header
 func (fw *Firewall) extractRequestedPort(conn net.Conn) (int, []byte, error) {
-	// Set a short timeout for reading the request
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetReadDeadline(time.Time{}) // Reset deadline
+	defer conn.SetReadDeadline(time.Time{})
 
 	reader := bufio.NewReader(conn)
 
-	// Read the first line (request line)
 	firstLine, err := reader.ReadString('\n')
 	if err != nil {
 		return 0, nil, err
 	}
 
-	// Buffer to store the complete request
 	var requestBuffer []byte
 	requestBuffer = append(requestBuffer, []byte(firstLine)...)
 
-	// Read headers
 	var hostHeader string
 	for {
 		line, err := reader.ReadString('\n')
@@ -278,19 +283,16 @@ func (fw *Firewall) extractRequestedPort(conn net.Conn) (int, []byte, error) {
 		}
 		requestBuffer = append(requestBuffer, []byte(line)...)
 
-		// Check for Host header
 		if strings.HasPrefix(strings.ToLower(line), "host:") {
 			hostHeader = strings.TrimSpace(line[5:])
 		}
 
-		// End of headers
 		if line == "\r\n" || line == "\n" {
 			break
 		}
 	}
 
-	// Extract port from host header
-	port := 80 // default
+	port := 80
 	if hostHeader != "" {
 		if strings.Contains(hostHeader, ":") {
 			parts := strings.Split(hostHeader, ":")
@@ -303,6 +305,64 @@ func (fw *Firewall) extractRequestedPort(conn net.Conn) (int, []byte, error) {
 	}
 
 	return port, requestBuffer, nil
+}
+
+func (fw *Firewall) isSynFlooding(ip string) bool {
+	now := time.Now()
+
+	fw.synFloodMutex.Lock()
+	defer fw.synFloodMutex.Unlock()
+
+	attempts := fw.synFloodTracker[ip]
+
+	var validAttempts []time.Time
+	for _, attempt := range attempts {
+		if now.Sub(attempt) < SynFloodWindow {
+			validAttempts = append(validAttempts, attempt)
+		}
+	}
+
+	validAttempts = append(validAttempts, now)
+	fw.synFloodTracker[ip] = validAttempts
+
+	if len(validAttempts) > MaxSynPerWindow {
+		fw.logger.LogError("SYN_FLOOD", "IP %s: %d tentativi in %v (limite: %d)",
+			ip, len(validAttempts), SynFloodWindow, MaxSynPerWindow)
+		return true
+	}
+
+	return false
+}
+
+func (fw *Firewall) hasTooManyConnections(ip string) bool {
+	fw.synFloodMutex.RLock()
+	activeConns := fw.activeConnsByIP[ip]
+	fw.synFloodMutex.RUnlock()
+
+	if activeConns >= MaxConnectionsPerIP {
+		fw.logger.LogError("SYN_FLOOD", "IP %s: %d connessioni attive (limite: %d)",
+			ip, activeConns, MaxConnectionsPerIP)
+		return true
+	}
+
+	return false
+}
+
+func (fw *Firewall) incrementActiveConnections(ip string) {
+	fw.synFloodMutex.Lock()
+	fw.activeConnsByIP[ip]++
+	fw.synFloodMutex.Unlock()
+}
+
+func (fw *Firewall) decrementActiveConnections(ip string) {
+	fw.synFloodMutex.Lock()
+	if fw.activeConnsByIP[ip] > 0 {
+		fw.activeConnsByIP[ip]--
+		if fw.activeConnsByIP[ip] == 0 {
+			delete(fw.activeConnsByIP, ip)
+		}
+	}
+	fw.synFloodMutex.Unlock()
 }
 
 func (fw *Firewall) isRateLimited(ip string) bool {
@@ -444,6 +504,22 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	defer fw.activeConns.Done()
 
+	clientAddr := conn.RemoteAddr().(*net.TCPAddr)
+	ip := clientAddr.IP.String()
+
+	if fw.isSynFlooding(ip) {
+		fw.logger.LogError("SYN_FLOOD", "SYN flood detected from IP: %s - connection dropped", ip)
+		return
+	}
+
+	if fw.hasTooManyConnections(ip) {
+		fw.logger.LogError("SYN_FLOOD", "Too many active connections from IP: %s - connection dropped", ip)
+		return
+	}
+
+	fw.incrementActiveConnections(ip)
+	defer fw.decrementActiveConnections(ip)
+
 	fw.connMutex.Lock()
 	currentConns := fw.connCounter
 	if currentConns >= MaxConcurrentConns {
@@ -462,13 +538,9 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 
 	conn.SetDeadline(time.Now().Add(ConnectionTimeout))
 
-	clientAddr := conn.RemoteAddr().(*net.TCPAddr)
-	ip := clientAddr.IP.String()
-
 	fw.logger.LogConnection(ip, clientAddr.Port, "INCOMING")
 	fw.logger.LogError("DEBUG", "Starting connection handling for IP: %s", ip)
 
-	// Extract requested port from HTTP request
 	requestedPort, requestBuffer, err := fw.extractRequestedPort(conn)
 	if err != nil {
 		fw.logger.LogError("FIREWALL", "Failed to parse HTTP request from %s: %v", ip, err)
@@ -517,7 +589,6 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 
 	fw.logger.LogProxy(ip, fw.proxyHost, fw.proxyPort, "CONNECTED")
 
-	// Forward the buffered request first
 	_, err = proxyConn.Write(requestBuffer)
 	if err != nil {
 		fw.logger.LogError("PROXY", "Failed to forward request buffer: %v", err)
@@ -538,13 +609,33 @@ func (fw *Firewall) Start() error {
 	go fw.rulesWatcher()
 	go fw.attemptsCleanupWatcher()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", fw.firewallPort))
+	var lc net.ListenConfig
+	lc.Control = func(network, address string, c syscall.RawConn) error {
+		var controlErr error
+		if err := c.Control(func(fd uintptr) {
+			if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+				controlErr = fmt.Errorf("failed to set SO_REUSEADDR: %v", err)
+				return
+			}
+
+			if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_DEFER_ACCEPT, 3); err != nil {
+				fw.logger.LogDebug("SOCKET", "TCP_DEFER_ACCEPT not supported: %v", err)
+			}
+
+			fw.logger.LogStartup("Socket configured with SYN flood mitigations")
+		}); err != nil {
+			return err
+		}
+		return controlErr
+	}
+
+	listener, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", fw.firewallPort))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %v", fw.firewallPort, err)
 	}
 	fw.listener = listener
 
-	fw.logger.LogStartup("Firewall listening on 0.0.0.0:%d -> proxy %s:%d", fw.firewallPort, fw.proxyHost, fw.proxyPort)
+	fw.logger.LogStartup("Firewall listening on 0.0.0.0:%d -> proxy %s:%d (SYN flood protection enabled)", fw.firewallPort, fw.proxyHost, fw.proxyPort)
 
 	go fw.handleSignals()
 
