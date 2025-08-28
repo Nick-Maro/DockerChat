@@ -179,3 +179,7 @@ func (fl *FirewallLogger) LogCleanup(deletedEntries int) {
 func (fl *FirewallLogger) LogStats(totalConnections, blockedConnections, allowedConnections int) {
 	fl.writeLog(INFO, "STATS", "Total: %d, Blocked: %d, Allowed: %d", totalConnections, blockedConnections, allowedConnections)
 }
+
+func (fl *FirewallLogger) LogDDoSProtection(ip string, hourlyAttempts, limit int, action string) {
+	fl.writeLog(WARNING, "DDOS", "IP: %s - Hourly attempts: %d/%d - Action: %s", ip, hourlyAttempts, limit, action)
+}

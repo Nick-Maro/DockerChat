@@ -37,10 +37,13 @@ const (
 )
 
 type Rules struct {
-	BlockedIPs           []string `json:"blocked_ips"`
-	Whitelist            []string `json:"whitelist"`
-	AllowedPorts         []int    `json:"allowed_ports"`
-	MaxAttemptsPerMinute int      `json:"max_attempts_per_minute"`
+	BlockedIPs             []string `json:"blocked_ips"`
+	Whitelist              []string `json:"whitelist"`
+	AllowedPorts           []int    `json:"allowed_ports"`
+	MaxAttemptsPerMinute   int      `json:"max_attempts_per_minute"`
+	MaxAttemptsPerHour     int      `json:"max_attempts_per_hour"`
+	AutoBlockEnabled       bool     `json:"auto_block_enabled"`
+	AutoBlockDurationHours int      `json:"auto_block_duration_hours"`
 }
 
 type Firewall struct {
@@ -50,6 +53,8 @@ type Firewall struct {
 	rulesFile          string
 	rulesModTime       time.Time
 	connectionAttempts map[string][]time.Time
+	hourlyAttempts     map[string][]time.Time
+	autoBlockedIPs     map[string]time.Time // IP -> block expiry time
 	attemptsMutex      sync.RWMutex
 	logger             *FirewallLogger
 
@@ -75,6 +80,8 @@ func NewFirewall() *Firewall {
 	fw := &Firewall{
 		rulesFile:          "/var/log/shared/firewall/rules.json",
 		connectionAttempts: make(map[string][]time.Time),
+		hourlyAttempts:     make(map[string][]time.Time),
+		autoBlockedIPs:     make(map[string]time.Time),
 		firewallPort:       getEnvInt("FIREWALL_PORT", DefaultFirewallPort),
 		proxyHost:          getEnv("REVERSE_PROXY_IP", "reverse-proxy"),
 		proxyPort:          getEnvInt("REVERSE_PROXY_PORT", DefaultProxyPort),
@@ -160,10 +167,13 @@ func (fw *Firewall) logErrorRateLimited(key, category, msg string, args ...inter
 
 func (fw *Firewall) defaultRules() *Rules {
 	return &Rules{
-		BlockedIPs:           []string{},
-		Whitelist:            []string{},
-		AllowedPorts:         []int{80, 443},
-		MaxAttemptsPerMinute: 5,
+		BlockedIPs:             []string{},
+		Whitelist:              []string{},
+		AllowedPorts:           []int{80, 443},
+		MaxAttemptsPerMinute:   5,
+		MaxAttemptsPerHour:     99,
+		AutoBlockEnabled:       true,
+		AutoBlockDurationHours: 24,
 	}
 }
 
@@ -207,6 +217,12 @@ func (fw *Firewall) loadRules() {
 	if tempRules.MaxAttemptsPerMinute <= 0 {
 		tempRules.MaxAttemptsPerMinute = 5
 	}
+	if tempRules.MaxAttemptsPerHour <= 0 {
+		tempRules.MaxAttemptsPerHour = 99
+	}
+	if tempRules.AutoBlockDurationHours <= 0 {
+		tempRules.AutoBlockDurationHours = 24
+	}
 	if len(tempRules.AllowedPorts) == 0 {
 		tempRules.AllowedPorts = []int{80, 443}
 	}
@@ -219,6 +235,8 @@ func (fw *Firewall) loadRules() {
 
 	if fw.logger != nil {
 		fw.logger.LogRulesReload(len(tempRules.BlockedIPs), len(tempRules.Whitelist), tempRules.AllowedPorts, tempRules.MaxAttemptsPerMinute)
+		fw.logger.LogStartup("DDoS Protection: MaxPerHour=%d, AutoBlock=%v, BlockDuration=%dh",
+			tempRules.MaxAttemptsPerHour, tempRules.AutoBlockEnabled, tempRules.AutoBlockDurationHours)
 	}
 }
 
@@ -245,10 +263,13 @@ func (fw *Firewall) isBlocked(ip string) bool {
 	fw.rulesMutex.RLock()
 	defer fw.rulesMutex.RUnlock()
 
-	if fw.parsedRules != nil {
-		return fw.parsedRules.IsBlocked(ip)
+	// Check if IP is manually blocked in rules
+	if fw.parsedRules != nil && fw.parsedRules.IsBlocked(ip) {
+		return true
 	}
-	return false
+
+	// Check if IP is auto-blocked for DDoS
+	return fw.isAutoBlocked(ip)
 }
 
 func (fw *Firewall) isAllowedPort(port int) bool {
@@ -401,9 +422,148 @@ func (fw *Firewall) isRateLimited(ip string) bool {
 	return len(validAttempts) > maxAttempts
 }
 
+// Check if IP is auto-blocked for DDoS
+func (fw *Firewall) isAutoBlocked(ip string) bool {
+	fw.attemptsMutex.RLock()
+	defer fw.attemptsMutex.RUnlock()
+
+	if blockExpiry, exists := fw.autoBlockedIPs[ip]; exists {
+		if time.Now().Before(blockExpiry) {
+			return true
+		} else {
+			// Block has expired, remove it
+			delete(fw.autoBlockedIPs, ip)
+			if fw.logger != nil {
+				fw.logger.LogStartup("Auto-block expired for IP %s", ip)
+			}
+		}
+	}
+	return false
+}
+
+// Track hourly attempts and auto-block if threshold exceeded
+func (fw *Firewall) trackHourlyAttempts(ip string) {
+	now := time.Now()
+	window := time.Hour
+
+	fw.attemptsMutex.Lock()
+	defer fw.attemptsMutex.Unlock()
+
+	fw.rulesMutex.RLock()
+	autoBlockEnabled := fw.rules.AutoBlockEnabled
+	maxHourlyAttempts := fw.rules.MaxAttemptsPerHour
+	blockDurationHours := fw.rules.AutoBlockDurationHours
+	fw.rulesMutex.RUnlock()
+
+	if !autoBlockEnabled {
+		return
+	}
+
+	// Clean up old attempts
+	attempts := fw.hourlyAttempts[ip]
+	var validAttempts []time.Time
+	for _, attempt := range attempts {
+		if now.Sub(attempt) < window {
+			validAttempts = append(validAttempts, attempt)
+		}
+	}
+
+	// Add current attempt
+	validAttempts = append(validAttempts, now)
+	fw.hourlyAttempts[ip] = validAttempts
+
+	// Check if threshold exceeded
+	if len(validAttempts) > maxHourlyAttempts {
+		// Auto-block the IP
+		blockExpiry := now.Add(time.Duration(blockDurationHours) * time.Hour)
+		fw.autoBlockedIPs[ip] = blockExpiry
+
+		// Add to rules.json for persistence
+		go fw.addToBlockedList(ip)
+
+		if fw.logger != nil {
+			fw.logger.LogDDoSProtection(ip, len(validAttempts), maxHourlyAttempts, "AUTO_BLOCKED")
+			fw.logger.LogBlocked(ip, "DDoS_AUTO_BLOCK",
+				"IP auto-blocked for %d hours after %d requests in 1 hour (limit: %d)",
+				blockDurationHours, len(validAttempts), maxHourlyAttempts)
+		}
+	} else if len(validAttempts) > maxHourlyAttempts*3/4 && fw.logger != nil {
+		// Warning when approaching limit
+		fw.logger.LogDDoSProtection(ip, len(validAttempts), maxHourlyAttempts, "WARNING_HIGH_TRAFFIC")
+		// Warning when approaching limit
+		fw.logger.LogDDoSProtection(ip, len(validAttempts), maxHourlyAttempts, "WARNING")
+	}
+}
+
+// Add IP to blocked list in rules.json
+func (fw *Firewall) addToBlockedList(ip string) {
+	fw.rulesMutex.Lock()
+	defer fw.rulesMutex.Unlock()
+
+	// Check if already in blocked list
+	for _, blockedIP := range fw.rules.BlockedIPs {
+		if blockedIP == ip {
+			return // Already blocked
+		}
+	}
+
+	// Add to blocked list
+	fw.rules.BlockedIPs = append(fw.rules.BlockedIPs, ip)
+
+	// Save to file
+	data, err := json.MarshalIndent(fw.rules, "", "  ")
+	if err != nil {
+		if fw.logger != nil {
+			fw.logger.LogError("RULES", "Failed to marshal rules for auto-block: %v", err)
+		}
+		return
+	}
+
+	if err := os.WriteFile(fw.rulesFile, data, 0644); err != nil {
+		if fw.logger != nil {
+			fw.logger.LogError("RULES", "Failed to save auto-blocked IP %s: %v", ip, err)
+		}
+		return
+	}
+
+	// Update parsed rules
+	fw.parsedRules = ParseRules(fw.rules)
+
+	if fw.logger != nil {
+		fw.logger.LogStartup("IP %s added to permanent block list", ip)
+	}
+}
+
+// Print DDoS protection statistics
+func (fw *Firewall) logDDoSStats() {
+	fw.attemptsMutex.RLock()
+	defer fw.attemptsMutex.RUnlock()
+
+	activeAutoBlocks := 0
+	expiredBlocks := 0
+	now := time.Now()
+
+	for _, blockExpiry := range fw.autoBlockedIPs {
+		if now.Before(blockExpiry) {
+			activeAutoBlocks++
+		} else {
+			expiredBlocks++
+		}
+	}
+
+	trackedIPs := len(fw.hourlyAttempts)
+
+	if fw.logger != nil {
+		fw.logger.LogStats(trackedIPs, activeAutoBlocks, expiredBlocks)
+		fw.logger.LogStartup("DDoS Stats: Tracking %d IPs, %d active auto-blocks, %d expired blocks",
+			trackedIPs, activeAutoBlocks, expiredBlocks)
+	}
+}
+
 func (fw *Firewall) cleanupOldAttempts() {
 	now := time.Now()
 	window := time.Minute
+	hourlyWindow := time.Hour
 	deletedEntries := 0
 
 	fw.attemptsMutex.Lock()
@@ -411,6 +571,7 @@ func (fw *Firewall) cleanupOldAttempts() {
 
 	forceCleanup := len(fw.connectionAttempts) > ForceCleanupThreshold
 
+	// Cleanup minute-based attempts
 	for ip, attempts := range fw.connectionAttempts {
 		var validAttempts []time.Time
 
@@ -430,6 +591,33 @@ func (fw *Firewall) cleanupOldAttempts() {
 			deletedEntries++
 		} else {
 			fw.connectionAttempts[ip] = validAttempts
+		}
+	}
+
+	// Cleanup hourly attempts
+	for ip, attempts := range fw.hourlyAttempts {
+		var validAttempts []time.Time
+
+		for _, attempt := range attempts {
+			if now.Sub(attempt) < hourlyWindow {
+				validAttempts = append(validAttempts, attempt)
+			}
+		}
+
+		if len(validAttempts) == 0 {
+			delete(fw.hourlyAttempts, ip)
+		} else {
+			fw.hourlyAttempts[ip] = validAttempts
+		}
+	}
+
+	// Cleanup expired auto-blocks
+	for ip, blockExpiry := range fw.autoBlockedIPs {
+		if now.After(blockExpiry) {
+			delete(fw.autoBlockedIPs, ip)
+			if fw.logger != nil {
+				fw.logger.LogStartup("Auto-block expired for IP %s", ip)
+			}
 		}
 	}
 
@@ -463,8 +651,17 @@ func (fw *Firewall) attemptsCleanupWatcher() {
 	ticker := time.NewTicker(CleanupInterval)
 	defer ticker.Stop()
 
+	statsCounter := 0
+
 	for range ticker.C {
 		fw.cleanupOldAttempts()
+
+		// Log DDoS stats every 10 cleanup cycles (every ~50 minutes)
+		statsCounter++
+		if statsCounter >= 10 {
+			fw.logDDoSStats()
+			statsCounter = 0
+		}
 	}
 }
 
@@ -574,6 +771,9 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 			fw.logger.LogRateLimit(ip, currentAttempts, maxAttempts)
 			return
 		}
+
+		// Track hourly attempts for DDoS protection
+		fw.trackHourlyAttempts(ip)
 	}
 
 	proxyAddr := net.JoinHostPort(fw.proxyHost, strconv.Itoa(fw.proxyPort))
