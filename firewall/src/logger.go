@@ -77,7 +77,6 @@ func (fl *FirewallLogger) initLogFile() error {
 
 		logFilePath := filepath.Join(fl.logDir, "firewall.log")
 
-		// Se è un nuovo giorno e il file esiste, fai il backup
 		if fl.currentDate != "" {
 			backupPath := filepath.Join(fl.logDir, fmt.Sprintf("firewall-%s.log", fl.currentDate))
 			os.Rename(logFilePath, backupPath)

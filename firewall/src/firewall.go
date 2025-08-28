@@ -54,7 +54,7 @@ type Firewall struct {
 	rulesModTime       time.Time
 	connectionAttempts map[string][]time.Time
 	hourlyAttempts     map[string][]time.Time
-	autoBlockedIPs     map[string]time.Time // IP -> block expiry time
+	autoBlockedIPs     map[string]time.Time
 	attemptsMutex      sync.RWMutex
 	logger             *FirewallLogger
 
@@ -263,12 +263,10 @@ func (fw *Firewall) isBlocked(ip string) bool {
 	fw.rulesMutex.RLock()
 	defer fw.rulesMutex.RUnlock()
 
-	// Check if IP is manually blocked in rules
 	if fw.parsedRules != nil && fw.parsedRules.IsBlocked(ip) {
 		return true
 	}
 
-	// Check if IP is auto-blocked for DDoS
 	return fw.isAutoBlocked(ip)
 }
 
@@ -422,7 +420,6 @@ func (fw *Firewall) isRateLimited(ip string) bool {
 	return len(validAttempts) > maxAttempts
 }
 
-// Check if IP is auto-blocked for DDoS
 func (fw *Firewall) isAutoBlocked(ip string) bool {
 	fw.attemptsMutex.RLock()
 	defer fw.attemptsMutex.RUnlock()
@@ -431,7 +428,6 @@ func (fw *Firewall) isAutoBlocked(ip string) bool {
 		if time.Now().Before(blockExpiry) {
 			return true
 		} else {
-			// Block has expired, remove it
 			delete(fw.autoBlockedIPs, ip)
 			if fw.logger != nil {
 				fw.logger.LogStartup("Auto-block expired for IP %s", ip)
@@ -441,7 +437,6 @@ func (fw *Firewall) isAutoBlocked(ip string) bool {
 	return false
 }
 
-// Track hourly attempts and auto-block if threshold exceeded
 func (fw *Firewall) trackHourlyAttempts(ip string) {
 	now := time.Now()
 	window := time.Hour
@@ -459,7 +454,6 @@ func (fw *Firewall) trackHourlyAttempts(ip string) {
 		return
 	}
 
-	// Clean up old attempts
 	attempts := fw.hourlyAttempts[ip]
 	var validAttempts []time.Time
 	for _, attempt := range attempts {
@@ -468,17 +462,13 @@ func (fw *Firewall) trackHourlyAttempts(ip string) {
 		}
 	}
 
-	// Add current attempt
 	validAttempts = append(validAttempts, now)
 	fw.hourlyAttempts[ip] = validAttempts
 
-	// Check if threshold exceeded
 	if len(validAttempts) > maxHourlyAttempts {
-		// Auto-block the IP
 		blockExpiry := now.Add(time.Duration(blockDurationHours) * time.Hour)
 		fw.autoBlockedIPs[ip] = blockExpiry
 
-		// Add to rules.json for persistence
 		go fw.addToBlockedList(ip)
 
 		if fw.logger != nil {
@@ -488,29 +478,23 @@ func (fw *Firewall) trackHourlyAttempts(ip string) {
 				blockDurationHours, len(validAttempts), maxHourlyAttempts)
 		}
 	} else if len(validAttempts) > maxHourlyAttempts*3/4 && fw.logger != nil {
-		// Warning when approaching limit
 		fw.logger.LogDDoSProtection(ip, len(validAttempts), maxHourlyAttempts, "WARNING_HIGH_TRAFFIC")
-		// Warning when approaching limit
 		fw.logger.LogDDoSProtection(ip, len(validAttempts), maxHourlyAttempts, "WARNING")
 	}
 }
 
-// Add IP to blocked list in rules.json
 func (fw *Firewall) addToBlockedList(ip string) {
 	fw.rulesMutex.Lock()
 	defer fw.rulesMutex.Unlock()
 
-	// Check if already in blocked list
 	for _, blockedIP := range fw.rules.BlockedIPs {
 		if blockedIP == ip {
-			return // Already blocked
+			return
 		}
 	}
 
-	// Add to blocked list
 	fw.rules.BlockedIPs = append(fw.rules.BlockedIPs, ip)
 
-	// Save to file
 	data, err := json.MarshalIndent(fw.rules, "", "  ")
 	if err != nil {
 		if fw.logger != nil {
@@ -526,7 +510,6 @@ func (fw *Firewall) addToBlockedList(ip string) {
 		return
 	}
 
-	// Update parsed rules
 	fw.parsedRules = ParseRules(fw.rules)
 
 	if fw.logger != nil {
@@ -534,7 +517,6 @@ func (fw *Firewall) addToBlockedList(ip string) {
 	}
 }
 
-// Print DDoS protection statistics
 func (fw *Firewall) logDDoSStats() {
 	fw.attemptsMutex.RLock()
 	defer fw.attemptsMutex.RUnlock()
@@ -571,7 +553,6 @@ func (fw *Firewall) cleanupOldAttempts() {
 
 	forceCleanup := len(fw.connectionAttempts) > ForceCleanupThreshold
 
-	// Cleanup minute-based attempts
 	for ip, attempts := range fw.connectionAttempts {
 		var validAttempts []time.Time
 
@@ -594,7 +575,6 @@ func (fw *Firewall) cleanupOldAttempts() {
 		}
 	}
 
-	// Cleanup hourly attempts
 	for ip, attempts := range fw.hourlyAttempts {
 		var validAttempts []time.Time
 
@@ -611,7 +591,6 @@ func (fw *Firewall) cleanupOldAttempts() {
 		}
 	}
 
-	// Cleanup expired auto-blocks
 	for ip, blockExpiry := range fw.autoBlockedIPs {
 		if now.After(blockExpiry) {
 			delete(fw.autoBlockedIPs, ip)
@@ -656,7 +635,6 @@ func (fw *Firewall) attemptsCleanupWatcher() {
 	for range ticker.C {
 		fw.cleanupOldAttempts()
 
-		// Log DDoS stats every 10 cleanup cycles (every ~50 minutes)
 		statsCounter++
 		if statsCounter >= 10 {
 			fw.logDDoSStats()
@@ -772,7 +750,6 @@ func (fw *Firewall) handleConnection(conn net.Conn) {
 			return
 		}
 
-		// Track hourly attempts for DDoS protection
 		fw.trackHourlyAttempts(ip)
 	}
 
