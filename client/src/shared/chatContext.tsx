@@ -221,7 +221,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const leaveRoom = () => { if (username && currentRoom) { sendAuthenticatedMessage(sendMessage, { command: 'leave_room', client_id: username }); setCurrentRoom(null); setRoomMessages([]); } };
 
   const sendMessageToRoom = (text: string) => {
-    if (!username || !currentRoom || status !== 'open') return;
+    if(!username || !currentRoom || status !== 'open') return;
     const ts = new Date().toISOString();
     setRoomMessages(prev => [...prev, { from_client: username, text, timestamp: ts, public_key: '', content: '', encrypted: false }]);
     sendAuthenticatedMessage(sendMessage, { command: `send_message:${text}`, client_id: username });
@@ -271,6 +271,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     sendMessageToRoom(file.name + (content ? ' (file attached)' : ''));
   };
 
+  const fetchPrivateMessages = async (clientId: string) => {
+    setCurrentClient(clients.find(c => c.client_id === clientId) || null);
+    await sendAuthenticatedMessage(sendMessage, { command: 'get_private_messages', client_id: username, target_client_id: clientId });
+  };
+
   const createRoom = (name: string) => {
     sendAuthenticatedMessage(sendMessage, { command: `create_room:${name}`, client_id: username });
     setRooms(prev => [...prev, { name, clients: 1, messages: 0, created_at: new Date().toISOString(), last_activity: new Date().toISOString() }]);
@@ -291,7 +296,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       createRoom,
       sendMessage: sendMessageToRoom,
       sendPrivateMessage,
-      fetchPrivateMessages: async (clientId: string) => { setCurrentClient(clients.find(c => c.client_id === clientId) || null); await sendAuthenticatedMessage(sendMessage, { command: 'get_private_messages', client_id: username, target_client_id: clientId }); },
+      fetchPrivateMessages,
       sendFile,
       sendPrivateFile
     }}>
