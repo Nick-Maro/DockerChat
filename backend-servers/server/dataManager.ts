@@ -108,7 +108,8 @@ export class DataManager {
         isFile?: boolean,
         filename?: string,
         mimetype?: string,
-        content?: string
+        content?: string,
+        encrypted?: boolean
     ): Promise<string> {
         const messageId = generateUUID();
         const message: PrivateMessage = {
@@ -122,7 +123,8 @@ export class DataManager {
             file: isFile || false,
             filename: filename || "",
             mimetype: mimetype || "",
-            content: content || ""
+            content: content || "",
+            encrypted: encrypted || false
         };
         await storage.addPrivateMessage(message);
         return messageId;

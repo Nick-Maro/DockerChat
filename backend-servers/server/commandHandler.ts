@@ -23,6 +23,16 @@ export class CommandHandler {
             ws.send(JSON.stringify({ error: "Invalid JSON" }));
             return;
         }
+        try {
+            const incomingPreview = {
+                command: (data && data.command) || null,
+                client_id: (data && data.client_id) || null,
+                encrypted: data?.encrypted === true,
+                contentLength: typeof data?.content === 'string' ? data.content.length : undefined
+            };
+            console.log('[CMD] Incoming WS message preview:', JSON.stringify(incomingPreview));
+        }
+        catch(diagErr){ console.warn('[CMD] Failed to log incoming preview:', diagErr); }
 
         const { command } = data;
         let { client_id } = data;
@@ -165,6 +175,57 @@ export class CommandHandler {
         let response: WSResponse = { command, message: "Unknown command", debug: debug_info };
 
         switch (true) {
+            case command.startsWith("get_ecdh_key:"): {
+                const target_username = command.split(":", 2)[1];
+                if (!target_username) {
+                    response.error = "Command format: get_ecdh_key:USERNAME";
+                    break;
+                }
+
+                if (!/^[a-zA-Z0-9_-]{3,16}$/.test(target_username)) {
+                    response.error = "Invalid username format";
+                    break;
+                }
+
+                if (target_username === clientId) {
+                    response.error = "Cannot request your own ECDH key";
+                    break;
+                }
+
+                const targetClient = await this.dataManager.getClient(target_username);
+                if (!targetClient) {
+                    response.error = "User not found";
+                    break;
+                }
+
+                if (!targetClient.ecdh_key) {
+                    response.error = "User has not uploaded ECDH key yet";
+                    try {
+                        const targetWs = wsClientMap.get(target_username);
+                        if (targetWs && targetWs.readyState === 1) {
+                            targetWs.send(JSON.stringify({ event: 'request_upload_ecdh', requester: clientId }));
+                            console.log(`[CMD] Requested ECDH upload from ${target_username} on behalf of ${clientId}`);
+                        }
+                    } catch (notifyErr) {
+                        console.warn(`[CMD] Failed to request ECDH upload for ${target_username}:`, notifyErr);
+                    }
+
+                    break;
+                }
+
+                const sameRoom = currentClient.room_id && targetClient.room_id === currentClient.room_id;
+                response = {
+                    ...response,
+                    message: `ECDH key retrieved for user '${target_username}'`,
+                    target_user: target_username,
+                    ecdh_key: targetClient.ecdh_key,
+                    user_online: !!targetClient.online,
+                    same_room: sameRoom,
+                    debug: debug_info
+                };
+                (response as any).event = 'get_ecdh_key';
+                break;
+            }
             case command.startsWith("create_room:"): {
                 const room_name = command.split(":", 2)[1];
                 if (!room_name) {
@@ -296,94 +357,96 @@ export class CommandHandler {
                 } else response.error = "You aren't connected to any room";
                 break;
             }
-case command.startsWith("send_private:"): {
-    const parts = command.split(":", 3);
-    if(parts.length < 3){
-        response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
-        break;
-    }
-    
-    const to_client_id = parts[1];
-    const message_text = parts[2];
-    
-    console.log(`[E2E] Private message from ${client_id} to ${to_client_id}`);
-    console.log(`[E2E] Encryption data received:`, {
-        encrypted: data?.encrypted,
-        iv: data?.iv ? 'present' : 'missing',
-        sender_ecdh_key: data?.sender_ecdh_key ? 'present' : 'missing'
-    });
-    
-    if(!message_text || !this.validateMessage(message_text)){
-        response.error = "Invalid message length";
-        break;
-    }
-    
-    const client = await this.dataManager.getClient(to_client_id);
-    
-    if(!client){
-        response.error = "Recipient Client not found";
-        break;
-    }
-    
-    const isFile = data?.file === true;
-    const filename = data?.filename;
-    const mimetype = data?.mimetype;
-    const content = data?.content;
-    const isEncrypted = data?.encrypted === true;
-    const iv = data?.iv;
-    const senderEcdhKey = data?.sender_ecdh_key;
-    
-    console.log(`[E2E] Storing message - encrypted: ${isEncrypted}, iv: ${iv ? 'present' : 'missing'}`);
-    
-    const message_id = await this.dataManager.addPrivateMessage(
-        client_id,
-        to_client_id,
-        message_text,
-        data?.signature,
-        isFile,
-        filename,
-        mimetype,
-        content,
-        isEncrypted,
-        iv,
-        senderEcdhKey
-    );
-    
-    const messageData = {
-        event: "private_message_received",
-        from_client: client_id,
-        to_client: to_client_id,
-        text: message_text,
-        timestamp: new Date().toISOString(),
-        verified: true,
-        file: isFile,
-        message_id: message_id,
-        encrypted: isEncrypted,
-        iv: iv,
-        sender_ecdh_key: senderEcdhKey
-    };
-    
-    if(isFile){
-        messageData.filename = filename;
-        messageData.mimetype = mimetype;
-        messageData.content = content;
-    }
-    
-    console.log(`[E2E] Broadcasting message - encrypted: ${messageData.encrypted}, iv: ${messageData.iv ? 'present' : 'missing'}`);
-    console.log(`[E2E] Full message data:`, JSON.stringify(messageData, null, 2));
-    
-    this.server.publish("global", JSON.stringify(messageData));
-    
-    response = {
-        ...response,
-        message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}${isEncrypted ? ' (encrypted)' : ''}`,
-        message_id,
-        to_client: to_client_id,
-        file: isFile,
-        encrypted: isEncrypted
-    };
-    break;
-}
+            case command.startsWith("send_private:"): {
+                const parts = command.split(":", 3);
+                if (parts.length < 3) {
+                    response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
+                    break;
+                }
+
+                const to_client_id = parts[1];
+                let message_text = parts[2];
+
+                if(data?.encrypted === true && data?.content) message_text = data.content;
+                if (!(data?.encrypted === true)){
+                    if(!message_text || !this.validateMessage(message_text)){
+                        response.error = "Invalid message length";
+                        break;
+                    }
+                }
+
+                const client = await this.dataManager.getClient(to_client_id);
+                try {
+                    const diag = {
+                        from: client_id,
+                        to: to_client_id,
+                        encrypted: data?.encrypted === true,
+                        textLength: typeof message_text === 'string' ? message_text.length : undefined,
+                        contentLength: typeof data?.content === 'string' ? data.content.length : undefined,
+                        hasSignature: !!data?.signature,
+                        isFile: data?.file === true
+                    };
+                    console.log('[CMD] send_private payload diag:', JSON.stringify(diag));
+                }
+                catch(dErr){ console.warn('[CMD] Failed to log send_private diag:', dErr); }
+
+                if (!client) {
+                    response.error = "Recipient Client not found";
+                    break;
+                }
+
+                const isFile = data?.file === true;
+                const filename = data?.filename;
+                const mimetype = data?.mimetype;
+                const content = data?.content;
+
+                const message_id = await this.dataManager.addPrivateMessage(
+                    client_id,
+                    to_client_id,
+                    message_text,
+                    data?.signature,
+                    isFile,
+                    filename,
+                    mimetype,
+                    content,
+                    data?.encrypted === true
+                );
+
+                const messageData = {
+                    event: "private_message_received",
+                    from_client: client_id,
+                    to_client: to_client_id,
+                    text: message_text,
+                    timestamp: new Date().toISOString(),
+                    verified: true,
+                    file: isFile,
+                    message_id: message_id,
+                    encrypted: data?.encrypted === true
+                };
+
+                if (isFile) {
+                    messageData.filename = filename;
+                    messageData.mimetype = mimetype;
+                    messageData.content = content;
+                }
+
+                if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
+                if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
+
+                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+
+                // to fix
+                this.server.publish("global", JSON.stringify(messageData));
+
+                response = {
+                    ...response,
+                    message: `Private message sent to ${to_client_id}${isFile ? ' (with file)' : ''}`,
+                    message_id,
+                    to_client: to_client_id,
+                    file: isFile
+                };
+                break;
+            }
             case command === "get_private_messages": {
                 console.log(`[E2E] Getting private messages for ${client_id}`);
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);

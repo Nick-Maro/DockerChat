@@ -44,9 +44,7 @@ export interface PrivateMessage {
     filename?: string;
     mimetype?: string;
     content?: string;
-    is_encrypted?: boolean;
-    iv?: string;  
-    sender_public_key?: string; 
+    encrypted?: boolean;
 }
 
 export interface Room {
