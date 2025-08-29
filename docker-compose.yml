@@ -6,6 +6,8 @@ services:
       dockerfile: Dockerfile
     container_name: firewall
     restart: unless-stopped
+    depends_on:
+      - reverse-proxy
     ports:
       - "${FIREWALL_PORT}:${FIREWALL_PORT}"
     volumes:
