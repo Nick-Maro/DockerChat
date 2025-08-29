@@ -1,4 +1,4 @@
-import { createContext, ComponentChildren } from "preact";
+import { createContext } from "preact";
 import { useContext, useState, useEffect, useRef, useCallback } from "preact/hooks";
 import { WS_CONFIG } from "../config";
 import { SocketMessage, SocketContextType, SocketProviderProps } from '../types';
@@ -27,10 +27,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     ws.onerror = () => setStatus("error");
 
     ws.onmessage = (e) => {
-      try{
-        const data = JSON.parse(e.data);
-        setMessages(prev => [...prev, data]);
-      }
+      try{ setMessages(prev => [...prev, JSON.parse(e.data)]); }
       catch(err){ console.error("WebSocket JSON parse error:", e.data, err); }
     };
 

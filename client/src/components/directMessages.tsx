@@ -1,4 +1,3 @@
-import { useState } from 'preact/hooks';
 import styles from '../css/directMessages.module.css';
 import { useChat } from '../shared/chatContext';
 import { useUnread } from '../shared/unreadMessagesContext';
@@ -10,19 +9,14 @@ export default function DirectMessages() {
     const { getUnreadCount, clearUnread } = useUnread();
 
     const selectClient = (client: Client) => {
-       
-        clearUnread(`client_${client.client_id}`);
-        if (window.setCurrentChat) {
-            window.setCurrentChat(`client_${client.client_id}`);
-        }
-        
+        clearUnread(`client_${client.client_id}`);        
         setCurrentClient(client);
         fetchPrivateMessages(client.client_id);
         leaveRoom();
     }
     const UnreadBadge = ({ clientId }: { clientId: string }) => {
         const count = getUnreadCount(`client_${clientId}`);
-        if (count === 0) return null;
+        if(count === 0) return null;
         
         return (
             <span className={styles.unreadBadge}>
@@ -47,7 +41,7 @@ export default function DirectMessages() {
                     }
                     
                     return +new Date(b.last_seen) - +new Date(a.last_seen);
-                }).map((client, index) => {
+                }).map(client => {
                     const hasUnread = getUnreadCount(`client_${client.client_id}`) > 0;
                     
                     return (

@@ -67,6 +67,10 @@ export interface Client {
   room_id: string | null;
   last_seen: string;
   online: boolean;
+  has_ecdh?: boolean;
+  waiting_for_ecdh?: boolean;
+  has_shared_key?: boolean;
+  ecdh_error?: boolean;
 }
 
 export interface PrivateMessage {
@@ -90,4 +94,9 @@ export interface Message {
   filename?: string;
   mimetype?: string;
   content?: string;
+  encrypted?: boolean;
+  error?: string;
+  warning?: string;
+  status?: "sent" | "pending" | "failed";
+  retryCount?: number;
 }

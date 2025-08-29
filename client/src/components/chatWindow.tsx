@@ -3,7 +3,7 @@ import styles from '../css/chatWindow.module.css';
 import { useChat } from '../shared/chatContext';
 import { useClient } from '../shared/authContext';
 import { Message } from "../types";
-import { handleFileUpload, getMessageType } from '../shared/fileHelpers';
+import { getMessageType } from '../shared/fileHelpers';
 
 // icons
 import attachWhite from '../assets/icons/attach-white.svg';
@@ -67,30 +67,25 @@ export function ChatWindow() {
   };
 
   const handleFileUploadWrapper = async (file: File) => {
-    try {
+    try{
       setUploadError(null);
-      
-      // File size check (10MB)
-      if(file.size > 10 * 1024 * 1024) {
+
+      if(file.size > 10 * 1024 * 1024){ // File size check (10MB)
         setUploadError("File size must be less than 10MB");
         return;
       }
 
-      if(currentRoom) {
-        await sendFile(file);
-      } else if(currentClient) {
-        await sendPrivateFile(file);
-      } else {
-        setUploadError("No chat selected");
-      }
-    } catch (error) {
+      if(currentRoom) await sendFile(file);
+      else if(currentClient) await sendPrivateFile(file);
+      else setUploadError("No chat selected");
+    }
+    catch(error){
       console.error("File upload failed:", error);
       setUploadError("File upload failed");
     }
   };
 
   const openFileDialog = () => fileInputRef.current?.click();
-
   const handleFileChange = (event: Event) => {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
@@ -159,8 +154,7 @@ export function ChatWindow() {
 
   return (
     <>
-      <div 
-        className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
+      <div className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
