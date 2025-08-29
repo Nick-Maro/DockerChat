@@ -293,8 +293,8 @@ export class CommandHandler {
                     response.error = "Room name is too long (max 50 characters)";
                     break;
                 }
-                if (!/^[a-zA-Z0-9_-]+$/.test(room_name)) {
-                    response.error = "Room name can only contain letters, numbers, underscores, and hyphens";
+                if (!/^[a-zA-Z0-9_\-\s]+$/.test(room_name)) {
+                    response.error = "Room name can only contain letters, numbers, underscores, hyphens, and spaces";
                     break;
                 }
                 const room = await this.dataManager.getRoom(room_name);
@@ -355,7 +355,7 @@ export class CommandHandler {
             }
             case command.startsWith("send_message:"): {
                 const message_text = command.split(":", 2)[1];
-                if(!message_text || !this.validateMessage(message_text)){
+                if(!data?.encrypted && (!message_text || !this.validateMessage(message_text))){
                     response.error = "Invalid message length";
                     break;
                 }
@@ -365,10 +365,11 @@ export class CommandHandler {
                     const filename = data?.filename;
                     const mimetype = data?.mimetype; 
                     const content = data?.content;
+                    const encrypted = data?.encrypted === true;
 
                     await this.dataManager.addMessageToRoom(room_id, {
                         from_client: clientId,
-                        text: message_text,
+                        text: encrypted ? (data?.content || '') : message_text,
                         signature: data.signature,
                         timestamp: getCurrentISOString(),
                         public_key: currentClient.public_key,
@@ -376,7 +377,8 @@ export class CommandHandler {
                         file: isFile,
                         filename: filename,
                         mimetype: mimetype,
-                        content: content
+                        content: content,
+                        encrypted: encrypted
                     });
 
                     const roomClients = await this.dataManager.getRoomClients(room_id);
@@ -388,17 +390,25 @@ export class CommandHandler {
 
                         const messageData = {
                             event: 'room_message_received',
-                            from: client_id,
+                            from_client: client_id,
+                            room_name: room_id,
                             timestamp: getCurrentISOString(),
-                            text: message_text,
-                            file: isFile
+                            text: encrypted ? (data?.content || '') : message_text,
+                            file: isFile,
+                            encrypted: encrypted,
+                            content: encrypted ? (data?.content || '') : message_text
                         };
                         
 
                         if(isFile){
-                            messageData.filename = filename;
-                            messageData.mimetype = mimetype;
-                            messageData.content = content;
+                            (messageData as any).filename = filename;
+                            (messageData as any).mimetype = mimetype;
+                            (messageData as any).content = content;
+                        }
+
+                        if(encrypted) {
+                            if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
+                            if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
                         }
                         
                         otherWs.send(JSON.stringify(messageData));

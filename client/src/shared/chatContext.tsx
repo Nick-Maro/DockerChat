@@ -110,6 +110,35 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           if(msg.command){
             if (msg.command === 'list_rooms') setRooms(msg.rooms || []);
             else if (msg.command === 'list_clients') setClients(msg.clients || []);
+            else if (msg.command?.startsWith('create_room:')) {
+              if (msg.error) {
+                console.error('Error creating room:', msg.error);
+              } else if (msg.room_name) {
+                const newRoom = {
+                  name: msg.room_name,
+                  clients: msg.clients_in_room || 1,
+                  messages: 0,
+                  created_at: new Date().toISOString(),
+                  last_activity: new Date().toISOString()
+                };
+                setRooms(prev => [...prev, newRoom]);
+                const room = rooms.find(r => r.name === msg.room_name) || newRoom;
+                setCurrentRoom(room);
+                setRoomMessages([]);
+              }
+            }
+            else if (msg.command?.startsWith('join_room:')) {
+              if (msg.error) {
+                console.error('Error joining room:', msg.error);
+              } else if (msg.room_name) {
+                const room = rooms.find(r => r.name === msg.room_name);
+                if (room) {
+                  setCurrentRoom(room);
+                  setRoomMessages([]);
+                  await sendAuthenticatedMessage(sendMessage, { command: 'get_messages', client_id: username });
+                }
+              }
+            }
             else if (msg.command === 'get_messages') {
               const list = msg.messages || [];
               for (const m of list) {
@@ -252,6 +281,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 to_client: m.to_client,
                 text,
                 timestamp: m.timestamp || new Date().toISOString(),
+                public_key: m.public_key || '',
                 file: m.file || false,
                 filename: m.filename,
                 mimetype: m.mimetype,
@@ -259,7 +289,12 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 encrypted
               };
 
-              if(msg.event === 'room_message_received') setRoomMessages(prev => [...prev, messageObj]);
+              if(msg.event === 'room_message_received') {
+                if(m.from_client !== username && currentRoom?.name !== m.room_name && document.hidden) {
+                  incrementUnread(`room_${m.room_name}`);
+                }
+                setRoomMessages(prev => [...prev, messageObj]);
+              }
               else {
                 setPrivateMessages(prev => {
                   const list = prev[peer] || [];
@@ -296,7 +331,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     }
   }, [status, username]);
 
-  const joinRoom = (roomName: string) => { if (!username || status !== 'open') return; if (currentRoom?.name === roomName) return; sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username }); const r = rooms.find(r => r.name === roomName); if (r) { setCurrentRoom(r); setRoomMessages([]); } };
+  const joinRoom = (roomName: string) => { 
+    if (!username || status !== 'open') return; 
+    if (currentRoom?.name === roomName) return; 
+    sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username }); 
+  };
   const leaveRoom = () => { if (username && currentRoom) { sendAuthenticatedMessage(sendMessage, { command: 'leave_room', client_id: username }); setCurrentRoom(null); setRoomMessages([]); } };
 
   const sendMessageToRoom = (text: string) => {
@@ -396,7 +435,6 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
   const createRoom = (name: string) => {
     sendAuthenticatedMessage(sendMessage, { command: `create_room:${name}`, client_id: username });
-    setRooms(prev => [...prev, { name, clients: 1, messages: 0, created_at: new Date().toISOString(), last_activity: new Date().toISOString() }]);
   };
 
   return (
