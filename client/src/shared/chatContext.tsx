@@ -125,24 +125,49 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 setRoomMessages(prev => [...prev, roomMsg]);
               }
             } else if (msg.command === 'get_private_messages') {
-              const raw = msg.private_messages || [];
               const clientId = currentClient?.client_id;
-              if (clientId) {
-                const relevant = raw.filter((m: any) => (m.from_client === username && m.to_client === clientId) || (m.from_client === clientId && m.to_client === username));
-                const processedMsgs: Message[] = [];
-                for (const m of relevant) {
+              if(!clientId) return;
+
+              const raw = msg.private_messages || [];
+              const relevant = raw.filter((m: any) =>
+                (m.from_client === username && m.to_client === clientId) ||
+                (m.from_client === clientId && m.to_client === username)
+              );
+
+              const processMessages = async () => {
+                return Promise.all(relevant.map(async (m: any) => {
+                  const isFile = !!m.file;
+                  const content = m.content || '';
                   let text = m.text || '';
                   let encrypted = !!m.encrypted;
                   if(encrypted){
                     const peer = m.from_client === username ? m.to_client : m.from_client;
-                    const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
-                    text = res.text;
-                    encrypted = !res.ok;
+                    const key = await getOrCreateSharedKey(peer);
+                    if(key){
+                      try { text = await decryptMessage(key, content || text); encrypted = false; }
+                      catch { text = '[Messaggio criptato - impossibile decifrare]'; }
+                    }
+                    else text = '[Messaggio criptato - chiave non disponibile]';
                   }
-                  processedMsgs.push({ id: m.id, from_client: m.from_client, to_client: m.to_client, text, timestamp: m.timestamp, public_key: m.public_key || '', content: m.content || m.text || '', encrypted });
-                }
-                setPrivateMessages(prev => ({ ...prev, [clientId]: processedMsgs }));
-              }
+
+                  return {
+                    id: m.id,
+                    from_client: m.from_client,
+                    to_client: m.to_client,
+                    text,
+                    timestamp: m.timestamp || new Date().toISOString(),
+                    public_key: m.public_key || '',
+                    content,
+                    encrypted,
+                    file: isFile,
+                    filename: m.filename,
+                    mimetype: m.mimetype
+                  } as Message;
+                }));
+              };
+
+              const processedMsgs = await processMessages();
+              setPrivateMessages(prev => ({ ...prev, [clientId]: processedMsgs }));
             }
           }
 
@@ -155,48 +180,94 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               }
             }
 
-            if (msg.event === 'private_message_received') {
+            if(msg.event === 'private_message_received'){
               const m = msg as any;
-              if(!(m.from_client === username || m.to_client === username)) continue;
-              if(m.from_client === username && m.to_client !== username) continue;
-              if(m.from_client === username && m.to_client === username) continue;
+              
+              if(!(m.from_client === username || m.to_client === username)) return;
+              if(m.from_client === username && m.to_client !== username) return;
+              if(m.from_client === username && m.to_client === username) return;
+              
               if(m.from_client !== username && currentClient?.client_id === m.from_client){
-                if (document.hidden) incrementUnread(`client_${m.from_client}`);
+                if(document.hidden) incrementUnread(`client_${m.from_client}`);
               }
+              
+              const isFile = !!m.file && !!m.content;
               let text = m.text || '';
               let encrypted = !!m.encrypted;
-              if(encrypted){
+
+              if(isFile){
+                text = m.filename || 'File';
+                encrypted = false;
+              }
+              else if(encrypted){
                 const peer = m.from_client === username ? m.to_client : m.from_client;
                 const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
                 text = res.text;
                 encrypted = !res.ok;
               }
-              const pm: Message = { id: m.message_id || `${m.from_client}:${Date.now()}`, from_client: m.from_client, to_client: m.to_client, text, timestamp: m.timestamp || new Date().toISOString(), public_key: '', content: m.content || '', encrypted };
-              setPrivateMessages(prev => { const list = prev[m.from_client] || []; return { ...prev, [m.from_client]: [...list, pm] }; });
-            }
 
-            if(msg.event === 'room_message_received'){
-              const m = msg as any;
-              if(m.from !== username){
-                if(! (currentRoom?.name === m.room_name) || document.hidden) incrementUnread(`room_${m.room_name}`);
-              }
-              const roomMsg: Message = {
-                from_client: m.from,
-                text: m.encrypted
-                  ? (await tryDecryptForPeer(
-                      m.from,
-                      m.content || m.text,
-                      (m as any).sk_fingerprint,
-                      (m as any).sender_ecdh_public
-                    )).text
-                  : (m.content || m.text || ''),
+              const pm: Message = {
+                id: m.message_id || `${m.from_client}:${Date.now()}`,
+                from_client: m.from_client,
+                to_client: m.to_client,
+                text,
                 timestamp: m.timestamp || new Date().toISOString(),
                 public_key: '',
-                content: m.content || m.text || '',
-                encrypted: !!m.encrypted
+                content: m.content || '',
+                encrypted,
+                file: isFile,
+                filename: m.filename,
+                mimetype: m.mimetype
               };
-              setRoomMessages(prev => [...prev, roomMsg]);
+
+              if(m.from_client === username){
+                setPrivateMessages(prev => {
+                  const list = prev[m.from_client] || [];
+                  const filtered = list.filter(msg => !msg.id.startsWith('local-'));
+                  return { ...prev, [m.from_client]: [...filtered, pm] };
+                });
+                return;
+              }
             }
+
+            if(msg.event === 'room_message_received' || msg.event === 'private_message_received'){
+              const m = msg as any;
+              let peer = m.from_client === username ? m.to_client : m.from_client;
+              let text = m.text || '';
+              let encrypted = !!m.encrypted;
+
+              if(m.file && m.filename && m.content){
+                text = m.filename;
+                encrypted = false;
+              }
+              else if(encrypted){
+                const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
+                text = res.text;
+                encrypted = !res.ok;
+              }
+
+              const messageObj: Message = {
+                id: m.message_id || `${peer}:${Date.now()}`,
+                from_client: m.from_client,
+                to_client: m.to_client,
+                text,
+                timestamp: m.timestamp || new Date().toISOString(),
+                file: m.file || false,
+                filename: m.filename,
+                mimetype: m.mimetype,
+                content: m.content || '',
+                encrypted
+              };
+
+              if(msg.event === 'room_message_received') setRoomMessages(prev => [...prev, messageObj]);
+              else {
+                setPrivateMessages(prev => {
+                  const list = prev[peer] || [];
+                  return { ...prev, [peer]: [...list, messageObj] };
+                });
+              }
+            }
+
 
             if(msg.event === 'client_ecdh_updated'){
               if(msg.client_id) { try { await requestPeerEcdh(msg.client_id); } catch {} }
@@ -255,7 +326,18 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     try{ sender_pub = await getLocalECDHPublic(); } catch {}
     let displayed = text;
     try{ const dec = await decryptMessage(key, encrypted); if (dec) displayed = dec; } catch {}
-    const localMsg: Message = { from_client: username, to_client: peer, text: displayed, timestamp: ts, public_key: '', content: encrypted, encrypted: true, status: 'sent' };
+    const localId = `local-${Date.now()}`;
+    const localMsg: Message = {
+      id: localId,
+      from_client: username,
+      to_client: peer,
+      text: displayed,
+      timestamp: ts,
+      public_key: '',
+      content: encrypted,
+      encrypted: true,
+      file: false
+    };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), localMsg] }));
     await sendAuthenticatedMessage(sendMessage, { command: `send_private:${peer}:ENC`, client_id: username, encrypted: true, content: encrypted, sk_fingerprint: sk_fp, sender_ecdh_public: sender_pub });
   };
@@ -274,9 +356,37 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   };
 
   const sendFile = async (file: File) => {
-    const readerToText = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(f); });
+    if(!currentRoom) return;
+    const readerToText = (f: File) => new Promise<string>((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result as string);
+      r.onerror = rej;
+      r.readAsDataURL(f);
+    });
+
     const content = await readerToText(file).catch(() => null);
-    sendMessageToRoom(file.name + (content ? ' (file attached)' : ''));
+    const ts = new Date().toISOString();
+    const msg: Message = {
+      from_client: username!,
+      text: file.name,
+      timestamp: ts,
+      file: true,
+      filename: file.name,
+      mimetype: file.type,
+      content: content || '',
+      encrypted: false,
+      public_key: ''
+    };
+
+    setRoomMessages(prev => [...prev, msg]);
+    await sendAuthenticatedMessage(sendMessage, {
+      command: `send_message:${file.name}`,
+      client_id: username,
+      file: true,
+      filename: file.name,
+      mimetype: file.type,
+      content
+    });
   };
 
   const fetchPrivateMessages = async (clientId: string) => {
