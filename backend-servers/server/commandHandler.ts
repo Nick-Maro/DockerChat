@@ -62,7 +62,6 @@ export class CommandHandler {
             const newClient: Client = {
                 id: username,
                 public_key: data.public_key,
-                ecdh_public_key: null,
                 room_id: null,
                 last_seen: now,
                 created_at: now
@@ -86,8 +85,6 @@ export class CommandHandler {
                 timestamp: now
             }));
 
-            console.log(`[E2E] Client registered: ${username}`);
-
             const response: WSResponse = {
                 command: command,
                 message: "Client registered with success!",
@@ -99,6 +96,66 @@ export class CommandHandler {
                 },
                 debug: debug_info
             };
+            this.sendResponse(ws, response);
+            return;
+        }
+
+        if (command === "upload_ecdh_key") {
+            const username = data.username;
+            if (!username || !/^[a-zA-Z0-9_-]{3,16}$/.test(username)) {
+                this.sendResponse(ws, { command, error: "Invalid username format", debug: debug_info });
+                return;
+            }
+
+            const existingClient = await this.dataManager.getClient(username);
+            if (!existingClient) {
+                this.sendResponse(ws, {
+                    command,
+                    error: "Client not found. Please upload public key first.",
+                    debug: debug_info
+                });
+                return;
+            }
+
+            if (!data.ecdh_key || !CryptoAuth.validateECDHKey(data.ecdh_key)) {
+                this.sendResponse(ws, {
+                    command: data.command,
+                    error: "Invalid ECDH key format",
+                    debug: debug_info
+                });
+                return;
+            }
+
+            const now = getCurrentISOString();
+
+            const updatedClient: Client = {
+                ...existingClient,
+                ecdh_key: data.ecdh_key,
+                last_seen: now
+            };
+
+            await storage.setClient(username, updatedClient);
+            await this.dataManager.setClientOnline(username, true, true);
+
+            ws.data.clientId = username;
+            wsClientMap.set(username, ws);
+
+            SecureSession.updateECDHKey(ws.data.wsId, username, data.ecdh_key);
+
+            this.server.publish("global", JSON.stringify({
+                event: "client_ecdh_updated",
+                client_id: username,
+                timestamp: now
+            }));
+
+            const response: WSResponse = {
+                command: command,
+                message: "ECDH key uploaded successfully!",
+                client_id: username,
+                status: "ecdh_updated",
+                debug: debug_info
+            };
+
             this.sendResponse(ws, response);
             return;
         }
@@ -448,22 +505,15 @@ export class CommandHandler {
                 break;
             }
             case command === "get_private_messages": {
-                console.log(`[E2E] Getting private messages for ${client_id}`);
                 const all_messages = await this.dataManager.getUserPrivateMessages(client_id);
-                console.log(`[E2E] Retrieved ${all_messages.length} messages from database`);
-                
                 const my_messages = all_messages
-                    .map(msg => {
-                        console.log(`[E2E] Processing message: encrypted=${msg.encrypted}, iv=${msg.iv ? 'present' : 'missing'}`);
-                        return {
-                            ...msg,
-                            direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
-                            verified: !!msg.signature,
-                            file: msg.file === true 
-                        };
-                    })
+                    .map(msg => ({
+                        ...msg,
+                        direction: msg.to_client === client_id ? 'received' : 'sent' as 'sent' | 'received',
+                        verified: !!msg.signature,
+                        file: msg.file === true 
+                    }))
                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                    
                 await this.dataManager.setPrivateMessagesAsRead(client_id);
                 response = {
                     ...response,
@@ -473,40 +523,6 @@ export class CommandHandler {
                 };
                 break;
             }
-case command === "upload_key_ECDH": {
-    const ecdhPublicKey = data.ecdh_public_key;
-    console.log(`[E2E] ECDH key upload from ${clientId}`);
-    console.log(`[E2E] Key data:`, ecdhPublicKey ? 'present' : 'missing');
-    
-    if (!ecdhPublicKey || typeof ecdhPublicKey !== 'string') {
-        response.error = "Invalid ECDH public key format";
-        break;
-    }
-    
-    try {
-        await storage.setClientECDHKey(clientId, ecdhPublicKey);
-        console.log(`[E2E] ECDH key stored successfully for ${clientId}`);
-        
-        // Broadcast to other clients that this user now has E2E capability
-        this.server.publish("global", JSON.stringify({
-            event: "client_ecdh_key_uploaded",
-            client_id: clientId,
-            timestamp: getCurrentISOString()
-        }));
-        
-        response = {
-            ...response,
-            message: "ECDH public key uploaded successfully",
-            client_id: clientId
-        };
-    } catch (error) {
-        console.error(`[E2E] Failed to store ECDH key for ${clientId}:`, error);
-        response.error = `Failed to store ECDH key: ${error}`;
-    }
-    break;
-}
-
-        
             case command === "get_messages": {
                 const room_id = currentClient.room_id;
                 if (room_id) {
@@ -529,21 +545,15 @@ case command === "upload_key_ECDH": {
                 break;
             }
             case command === "list_clients": {
-                console.log(`[E2E] Listing clients for ${client_id}`);
                 const clients = await this.dataManager.getClients();
                 const client_list = Object.entries(clients)
                     .filter(([cid, _]) => cid !== client_id)
-                    .map(([cid, c_data]) => {
-                        console.log(`[E2E] Client ${cid} ECDH key:`, c_data.ecdh_public_key ? 'present' : 'missing');
-                        return {
-                            client_id: cid,
-                            room_id: c_data.room_id,
-                            last_seen: c_data.last_seen,
-                            online: !!c_data.online,
-                            ecdh_public_key: c_data.ecdh_public_key || null
-                        };
-                    });
-                console.log(`[E2E] Returning ${client_list.length} clients with ECDH keys`);
+                    .map(([cid, c_data]) => ({
+                        client_id: cid,
+                        room_id: c_data.room_id,
+                        last_seen: c_data.last_seen,
+                        online: !!c_data.online
+                    }));
                 response = {
                     ...response,
                     message: "List of available clients",

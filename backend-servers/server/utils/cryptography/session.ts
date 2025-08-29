@@ -3,6 +3,7 @@ export class SecureSession {
         wsId: string;
         clientId: string;
         publicKey: string;
+        ecdhKey: string;
         lastActivity: number;
     }>();
 
@@ -10,11 +11,34 @@ export class SecureSession {
         this.activeSessions.set(wsId, { wsId, clientId, publicKey, lastActivity: Date.now() });
     }
 
-    static getSession(wsId: string): { clientId: string; publicKey: string } | null {
+    static updateECDHKey(wsId: string, clientId: string, ecdhKey: string): boolean {
+        const session = this.activeSessions.get(wsId);
+        if (!session || session.clientId !== clientId) return false;
+
+        session.ecdhKey = ecdhKey;
+        session.lastActivity = Date.now();
+        return true;
+    }
+
+    static getSession(wsId: string): { clientId: string; publicKey: string; ecdhKey?: string } | null {
         const session = this.activeSessions.get(wsId);
         if (!session) return null;
         session.lastActivity = Date.now();
-        return { clientId: session.clientId, publicKey: session.publicKey };
+        return {
+            clientId: session.clientId,
+            publicKey: session.publicKey,
+            ecdhKey: session.ecdhKey
+        };
+    }
+
+    static hasECDHCapability(wsId: string): boolean {
+        const session = this.activeSessions.get(wsId);
+        return !!(session?.ecdhKey);
+    }
+
+    static getECDHKey(wsId: string): string | null {
+        const session = this.activeSessions.get(wsId);
+        return session?.ecdhKey || null;
     }
 
     static removeSession(wsId: string): void {

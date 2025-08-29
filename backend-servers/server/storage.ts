@@ -18,9 +18,7 @@ class Storage {
         ROOM: (id: string) => `room:${id}`,
         PRIVATE_MSG: (id: string) => `pm:${id}`,
         CLIENT_ROOM_INDEX: (roomId: string) => `room_clients:${roomId}`,
-        USER_MESSAGES_INDEX: (userId: string) => `user_messages:${userId}`,
-        ENCRYPTED_MESSAGES_INDEX: () => `encrypted_messages`,
-        CLIENT_ECDH_KEY: (clientId: string) => `ecdh_key:${clientId}`
+        USER_MESSAGES_INDEX: (userId: string) => `user_messages:${userId}`
     };
 
     async initialize(): Promise<void> {
@@ -123,64 +121,8 @@ class Storage {
     }
 
     private normalizeClient(client: Client): Client {
-        if (typeof client.online === 'undefined') client.online = true;
-        if (typeof client.ecdh_public_key === 'undefined') client.ecdh_public_key = null;
+        if(typeof client.online === 'undefined') client.online = true;
         return client;
-    }
-
-    // ECDH Key Management Methods
-    async setClientECDHKey(clientId: string, ecdhPublicKey: string): Promise<void> {
-        const client = await this.getClient(clientId);
-        if (!client) {
-            throw new Error(`Client ${clientId} not found`);
-        }
-        
-        client.ecdh_public_key = ecdhPublicKey;
-        await this.setClient(clientId, client);
-    }
-
-    async getClientECDHKey(clientId: string): Promise<string | null> {
-        const client = await this.getClient(clientId);
-        return client?.ecdh_public_key || null;
-    }
-
-    async getBatchClientECDHKeys(clientIds: string[]): Promise<Map<string, string>> {
-        const result = new Map<string, string>();
-        
-        if (this.redis) {
-            try {
-                const clientKeys = clientIds.map(id => this.REDIS_KEYS.CLIENT(id));
-                const clientsData = await this.redis.mGet(clientKeys);
-                
-                clientsData.forEach((clientJson, index) => {
-                    if (clientJson) {
-                        const client = JSON.parse(clientJson) as Client;
-                        if (client.ecdh_public_key) {
-                            result.set(clientIds[index], client.ecdh_public_key);
-                        }
-                    }
-                });
-            } catch (error) {
-                console.error(`[ERROR] Failed to get batch ECDH keys: ${error}`);
-                // Fall back to individual calls
-                for (const clientId of clientIds) {
-                    const key = await this.getClientECDHKey(clientId);
-                    if (key) {
-                        result.set(clientId, key);
-                    }
-                }
-            }
-        } else {
-            // Local storage
-            for (const clientId of clientIds) {
-                const client = this.localClients.get(clientId);
-                if (client?.ecdh_public_key) {
-                    result.set(clientId, client.ecdh_public_key);
-                }
-            }
-        }
-        
-        return result;
     }
 
     async getRoom(roomId: string): Promise<Room | null> {
@@ -312,82 +254,6 @@ class Storage {
         this.localPrivateMessages.set(message.id, message);
     }
 
-    // Enhanced Private Message Methods for E2E
-    async addEncryptedPrivateMessage(message: PrivateMessage): Promise<void> {
-        // Validate encrypted message has required fields
-        if (message.is_encrypted && (!message.iv || !message.sender_public_key)) {
-            throw new Error("Encrypted message missing required fields (iv, sender_public_key)");
-        }
-
-        if (this.redis) {
-            try {
-                const pipeline = this.redis.multi();
-                pipeline.set(this.REDIS_KEYS.PRIVATE_MSG(message.id), JSON.stringify(message));
-                pipeline.lPush(this.REDIS_KEYS.USER_MESSAGES_INDEX(message.to_client), message.id);
-                pipeline.lPush(this.REDIS_KEYS.USER_MESSAGES_INDEX(message.from_client), message.id);
-                
-                // Add to encrypted messages index for easier querying
-                if (message.is_encrypted) {
-                    pipeline.sAdd(this.REDIS_KEYS.ENCRYPTED_MESSAGES_INDEX(), message.id);
-                }
-                
-                await pipeline.exec();
-            } catch (error) {
-                console.error(`[ERROR] Failed to add encrypted private message: ${error}`);
-                throw error;
-            }
-        }
-        
-        this.localPrivateMessages.set(message.id, message);
-    }
-
-    // Get conversation messages between two users (for E2E chat)
-    async getConversationMessages(userId1: string, userId2: string, limit: number = 50): Promise<PrivateMessage[]> {
-        if (this.redis) {
-            try {
-                // Get message IDs for both users
-                const user1MessageIds = await this.redis.lRange(this.REDIS_KEYS.USER_MESSAGES_INDEX(userId1), 0, limit * 2);
-                const user2MessageIds = await this.redis.lRange(this.REDIS_KEYS.USER_MESSAGES_INDEX(userId2), 0, limit * 2);
-                
-                // Combine and deduplicate
-                const allMessageIds = [...new Set([...user1MessageIds, ...user2MessageIds])];
-                
-                if (allMessageIds.length === 0) return [];
-                
-                const messageKeys = allMessageIds.map(id => this.REDIS_KEYS.PRIVATE_MSG(id));
-                const messagesData = await this.redis.mGet(messageKeys);
-                
-                const messages = messagesData
-                    .filter((data): data is string => data !== null)
-                    .map(data => JSON.parse(data) as PrivateMessage)
-                    .filter(msg => 
-                        (msg.from_client === userId1 && msg.to_client === userId2) ||
-                        (msg.from_client === userId2 && msg.to_client === userId1)
-                    )
-                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                    .slice(-limit); // Get most recent messages
-                
-                return messages;
-            } catch (error) {
-                console.error(`[ERROR] Error getting conversation messages: ${error}`);
-                // Fall back to local storage
-            }
-        }
-        
-        // Local storage fallback
-        const messages: PrivateMessage[] = [];
-        for (const message of this.localPrivateMessages.values()) {
-            if ((message.from_client === userId1 && message.to_client === userId2) ||
-                (message.from_client === userId2 && message.to_client === userId1)) {
-                messages.push(message);
-            }
-        }
-        
-        return messages
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            .slice(-limit);
-    }
-
     async getClientPrivateMessages(userId: string, limit: number = 50): Promise<PrivateMessage[]> {
         if (this.redis) {
             try {
@@ -426,88 +292,6 @@ class Storage {
         }
         const localMessage = this.localPrivateMessages.get(messageId);
         if (localMessage) localMessage.read = true;
-    }
-
-    // Method to validate encrypted message integrity (optional security check)
-    async validateEncryptedMessage(message: PrivateMessage): Promise<boolean> {
-        if (!message.is_encrypted) return true;
-        
-        // Check required encrypted message fields
-        if (!message.iv || !message.sender_public_key) {
-            console.error(`[SECURITY] Encrypted message ${message.id} missing required fields`);
-            return false;
-        }
-        
-        // Validate IV format (should be base64)
-        try {
-            atob(message.iv);
-        } catch {
-            console.error(`[SECURITY] Invalid IV format in message ${message.id}`);
-            return false;
-        }
-        
-        // Validate sender public key format (should be base64)
-        try {
-            atob(message.sender_public_key);
-        } catch {
-            console.error(`[SECURITY] Invalid sender public key format in message ${message.id}`);
-            return false;
-        }
-        
-        // Validate encrypted content (should be base64)
-        try {
-            atob(message.text);
-        } catch {
-            console.error(`[SECURITY] Invalid encrypted content format in message ${message.id}`);
-            return false;
-        }
-        
-        return true;
-    }
-
-    // Method to clean up expired encrypted messages (optional)
-    async cleanExpiredEncryptedMessages(ttl: number): Promise<void> {
-        const now = Date.now();
-        
-        if (this.redis) {
-            try {
-                const encryptedMessageIds = await this.redis.sMembers(this.REDIS_KEYS.ENCRYPTED_MESSAGES_INDEX());
-                const expiredIds: string[] = [];
-                
-                if (encryptedMessageIds.length > 0) {
-                    const messageKeys = encryptedMessageIds.map(id => this.REDIS_KEYS.PRIVATE_MSG(id));
-                    const messagesData = await this.redis.mGet(messageKeys);
-                    
-                    messagesData.forEach((messageJson, index) => {
-                        if (messageJson) {
-                            const message = JSON.parse(messageJson) as PrivateMessage;
-                            if (now - new Date(message.timestamp).getTime() > ttl * 1000) {
-                                expiredIds.push(encryptedMessageIds[index]);
-                            }
-                        }
-                    });
-                    
-                    if (expiredIds.length > 0) {
-                        const pipeline = this.redis.multi();
-                        expiredIds.forEach(id => {
-                            pipeline.del(this.REDIS_KEYS.PRIVATE_MSG(id));
-                            pipeline.sRem(this.REDIS_KEYS.ENCRYPTED_MESSAGES_INDEX(), id);
-                        });
-                        await pipeline.exec();
-                        console.log(`Cleaned up ${expiredIds.length} expired encrypted messages`);
-                    }
-                }
-            } catch (error) {
-                console.error(`[ERROR] Failed to clean expired encrypted messages: ${error}`);
-            }
-        } else {
-            // Local storage cleanup
-            for (const [messageId, message] of this.localPrivateMessages.entries()) {
-                if (message.is_encrypted && now - new Date(message.timestamp).getTime() > ttl * 1000) {
-                    this.localPrivateMessages.delete(messageId);
-                }
-            }
-        }
     }
 
     async getExpiredClientIds(ttl: number): Promise<string[]> {
@@ -571,19 +355,18 @@ class Storage {
                     }
                 }
                 await setPipeline.exec();
-            } catch(error){ 
-                console.error(`[ERROR] Failed to update clients online status in batch: ${error}`); 
-            }
+                }
+                catch(error){ console.error(`[ERROR] Failed to update clients online status in batch: ${error}`); }
         }
     }
 
-    async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
-        const client = await this.getClient(clientId);
-        if(!client) return;
-        client.online = online;
-        if(touchLastSeen) client.last_seen = new Date().toISOString();
-        await this.setClient(clientId, client);
-    }
+        async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
+            const client = await this.getClient(clientId);
+            if(!client) return;
+            client.online = online;
+            if(touchLastSeen) client.last_seen = new Date().toISOString();
+            await this.setClient(clientId, client);
+        }
 
     async getClients(): Promise<{ [clientId: string]: Client }> {
         const result: { [clientId: string]: Client } = {};
@@ -676,6 +459,61 @@ class Storage {
                 if(entry) cache.delete(entry[0]);
             }
         }
+    }
+
+    async getClientECDHKey(clientId: string): Promise<string | null> {
+        const cached = this.clientCache.get(clientId);
+        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) return cached.data.ecdh_key || null;
+
+        if (this.redis) {
+            try {
+                const clientData = await this.redis.get(this.REDIS_KEYS.CLIENT(clientId));
+                if (clientData) {
+                    const client = JSON.parse(clientData) as Client;
+                    this.clientCache.set(clientId, { data: client, timestamp: Date.now() });
+                    return client.ecdh_key || null;
+                }
+                return null;
+            } catch (error) {
+                console.error("[ERROR] Error getting client ECDH key: ", error);
+            }
+        }
+
+        const localClient = this.localClients.get(clientId);
+        return localClient?.ecdh_key || null;
+    }
+
+    async getBatchClientECDHKeys(clientIds: string[]): Promise<Map<string, string>> {
+        const result = new Map<string, string>();
+        if (clientIds.length === 0) return result;
+
+        if (this.redis) {
+            try {
+                const clientKeys = clientIds.map(id => this.REDIS_KEYS.CLIENT(id));
+                const clientsData = await this.redis.mGet(clientKeys);
+
+                clientsData.forEach((clientData, index) => {
+                    if (clientData) {
+                        const client = JSON.parse(clientData) as Client;
+                        if (client.ecdh_key) result.set(clientIds[index], client.ecdh_key);
+                        this.clientCache.set(clientIds[index], { data: client, timestamp: Date.now() });
+                    }
+                });
+            } catch (error) {
+                console.error("[ERROR] Error getting batch ECDH keys: ", error);
+                for (const clientId of clientIds) {
+                    const localClient = this.localClients.get(clientId);
+                    if (localClient?.ecdh_key) result.set(clientId, localClient.ecdh_key);
+                }
+            }
+        } else {
+            for (const clientId of clientIds) {
+                const localClient = this.localClients.get(clientId);
+                if (localClient?.ecdh_key) result.set(clientId, localClient.ecdh_key);
+            }
+        }
+
+        return result;
     }
 }
 
