@@ -99,6 +99,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     if(!messages || messages.length <= lastMessageIndex.current) return;
     const slice = messages.slice(lastMessageIndex.current);
     lastMessageIndex.current = messages.length;
+
     (async () => {
       for(const msg of slice){
         try{
@@ -106,7 +107,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           if(processed.current.has(serialized)) continue;
           processed.current.add(serialized);
 
-          if (msg.command) {
+          if(msg.command){
             if (msg.command === 'list_rooms') setRooms(msg.rooms || []);
             else if (msg.command === 'list_clients') setClients(msg.clients || []);
             else if (msg.command === 'get_messages') {
@@ -132,9 +133,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 for (const m of relevant) {
                   let text = m.text || '';
                   let encrypted = !!m.encrypted;
-                  if (encrypted && m.from_client !== username) {
-                    const res = await tryDecryptForPeer(m.from_client, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
-                    text = res.text; encrypted = !res.ok;
+                  if(encrypted){
+                    const peer = m.from_client === username ? m.to_client : m.from_client;
+                    const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
+                    text = res.text;
+                    encrypted = !res.ok;
                   }
                   processedMsgs.push({ id: m.id, from_client: m.from_client, to_client: m.to_client, text, timestamp: m.timestamp, public_key: m.public_key || '', content: m.content || m.text || '', encrypted });
                 }
@@ -143,11 +146,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
             }
           }
 
-          if (msg.event) {
-            if (msg.event === 'get_ecdh_key') {
-              if (msg.ecdh_key && msg.target_user) {
-                try { localStorage.setItem(`ecdh_peer:${msg.target_user}`, msg.ecdh_key); } catch {}
-                try { const k = await deriveSharedKey(msg.ecdh_key); sharedKeys.current[msg.target_user] = k; } catch {}
+          if(msg.event){
+            if(msg.event === 'get_ecdh_key'){
+              if(msg.ecdh_key && msg.target_user){
+                try{ localStorage.setItem(`ecdh_peer:${msg.target_user}`, msg.ecdh_key); } catch {}
+                try{ const k = await deriveSharedKey(msg.ecdh_key); sharedKeys.current[msg.target_user] = k; } catch {}
                 if (pendingEcdh.current[msg.target_user]) pendingEcdh.current[msg.target_user](msg.ecdh_key);
               }
             }
@@ -162,7 +165,12 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               }
               let text = m.text || '';
               let encrypted = !!m.encrypted;
-              if(encrypted) { const r = await tryDecryptForPeer(m.from_client, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public); text = r.text; encrypted = !r.ok; }
+              if(encrypted){
+                const peer = m.from_client === username ? m.to_client : m.from_client;
+                const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
+                text = res.text;
+                encrypted = !res.ok;
+              }
               const pm: Message = { id: m.message_id || `${m.from_client}:${Date.now()}`, from_client: m.from_client, to_client: m.to_client, text, timestamp: m.timestamp || new Date().toISOString(), public_key: '', content: m.content || '', encrypted };
               setPrivateMessages(prev => { const list = prev[m.from_client] || []; return { ...prev, [m.from_client]: [...list, pm] }; });
             }
@@ -201,12 +209,12 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   }, [messages, currentClient, currentRoom, username, incrementUnread, tryDecryptForPeer, requestPeerEcdh]);
 
   useEffect(() => {
-    if (status === 'open' && username) {
+    if(status === 'open' && username){
       (async () => {
         try {
           await getOrCreatePublicKey();
           const existing = localStorage.getItem('ecdh_private');
-          if (!existing) {
+          if(!existing){
             const pub = await generateECDHKeyPair();
             await sendAuthenticatedMessage(sendMessage, { command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
           }
