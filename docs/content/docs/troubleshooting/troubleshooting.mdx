@@ -1,0 +1,574 @@
+---
+title: Troubleshooting Guide
+description: Common issues, debugging procedures, and solutions for the network security infrastructure.
+---
+
+## Dashboard Issues
+
+### Dashboard Access Problems
+
+**Symptoms:**
+- Cannot access dashboard at `dashboard.localhost`
+- Page not loading or showing connection errors
+- Static assets (CSS/JS) not loading properly
+
+**Solutions:**
+```bash
+# Check dashboard container status
+docker compose ps dashboard
+
+# Verify hosts file configuration
+ping dashboard.localhost
+
+# Check dashboard logs
+docker compose logs -f dashboard
+
+# Verify Redis connectivity from dashboard
+docker compose exec dashboard python -c "import redis; r=redis.Redis(host='redis'); print(r.ping())"
+
+# Check file permissions
+docker compose exec dashboard ls -la /var/log/shared/firewall/
+
+# Restart dashboard service
+docker compose restart dashboard
+```
+
+**Common Causes:**
+- Missing hosts file entries
+- Redis connection issues
+- File permission problems
+- Port conflicts
+
+### Flask Debug Mode Issues
+
+**Symptoms:**
+- Dashboard showing debug information in production
+- Performance degradation
+- Security information exposure
+
+**Solutions:**
+```bash
+# Disable debug mode
+echo "DEBUG=FALSE" >> .env
+docker compose restart dashboard
+
+# Check environment variables
+docker compose exec dashboard env | grep DEBUG
+
+# Production configuration
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+## Firewall Configuration Issues
+
+### Rule Syntax Problems
+
+**Symptoms:**
+- Firewall not blocking expected IPs
+- Rules not applying after updates
+- JSON parsing errors in logs
+
+**Solutions:**
+```bash
+# Validate JSON syntax
+docker compose exec firewall cat /var/log/shared/firewall/rules.json | python -m json.tool
+
+# Check firewall logs for errors
+docker compose logs -f firewall | grep "ERROR"
+
+# Reset to default rules
+docker compose exec dashboard rm /var/log/shared/firewall/rules.json
+docker compose restart firewall
+
+# Test rule application
+curl -v http://api.localhost/status
+```
+
+**Default Rules Template:**
+```json
+{
+    "blocked_ips": [],
+    "whitelist": ["127.0.0.1", "::1"],
+    "allowed_ports": [80, 443, 8080, 5000, 5001, 6379],
+    "max_attempts_per_minute": 100,
+    "max_attempts_per_hour": 200,
+    "auto_block_enabled": true,
+    "auto_block_duration_hours": 24
+}
+```
+
+### Port Conflicts
+
+**Symptoms:**
+- Firewall fails to start
+- "Address already in use" errors
+- Connection refused errors
+
+**Solutions:**
+```bash
+# Check port availability
+netstat -tulpn | grep 5001
+lsof -i :5001
+
+# Kill conflicting processes
+sudo kill $(lsof -t -i:5001)
+
+# Change firewall port
+echo "FIREWALL_PORT=5002" >> .env
+docker compose down && docker compose up -d
+
+# Verify firewall is listening
+docker compose exec firewall netstat -tulpn | grep 5001
+```
+
+### Permission Errors
+
+**Symptoms:**
+- Cannot write to log files
+- "Permission denied" errors
+- Log files not updating
+
+**Solutions:**
+```bash
+# Fix shared volume permissions
+docker compose exec firewall chmod 777 /var/log/shared/firewall
+docker compose exec dashboard chmod 777 /var/log/shared/firewall
+
+# Check volume mounts
+docker compose exec firewall ls -la /var/log/shared/firewall/
+docker compose exec dashboard ls -la /var/log/shared/firewall/
+
+# Recreate volumes with correct permissions
+docker compose down -v
+docker volume create shared_logs
+docker compose up -d
+```
+
+## Redis Connection Problems
+
+### Redis Container Issues
+
+**Symptoms:**
+- Server cannot connect to Redis
+- Dashboard shows "Redis not available"
+- Connection timeouts
+
+**Solutions:**
+```bash
+# Check Redis container status
+docker compose ps redis
+docker compose logs redis
+
+# Test Redis connectivity
+docker compose exec redis redis-cli ping
+
+# Check Redis configuration
+docker compose exec redis redis-cli config get "*"
+
+# Restart Redis service
+docker compose restart redis
+
+# Check network connectivity
+docker compose exec server ping redis
+docker compose exec dashboard ping redis
+```
+
+### Redis Memory Issues
+
+**Symptoms:**
+- Redis out of memory errors
+- Slow response times
+- Data eviction warnings
+
+**Solutions:**
+```bash
+# Check Redis memory usage
+docker compose exec redis redis-cli info memory
+
+# Check memory policies
+docker compose exec redis redis-cli config get maxmemory*
+
+# Set memory limits
+docker compose exec redis redis-cli config set maxmemory 256mb
+docker compose exec redis redis-cli config set maxmemory-policy allkeys-lru
+
+# Clear old data
+curl -X POST http://dashboard.localhost/redis/clear -d "clear_type=all"
+```
+
+### Redis Authentication Problems
+
+**Symptoms:**
+- Authentication failed errors
+- NOAUTH required errors
+- Connection refused
+
+**Solutions:**
+```bash
+# Check Redis password configuration
+docker compose exec redis redis-cli auth redis_password
+
+# Verify environment variables
+docker compose exec server env | grep REDIS
+docker compose exec dashboard env | grep REDIS
+
+# Test connection with password
+docker compose exec redis redis-cli -a redis_password ping
+
+# Reset Redis authentication
+docker compose down redis
+docker volume rm docker-mini-network_redis_data
+docker compose up -d redis
+```
+
+## WebSocket Connection Issues
+
+### Connection Failures
+
+**Symptoms:**
+- WebSocket connection refused
+- Clients cannot connect to server
+- Connection drops frequently
+
+**Solutions:**
+```bash
+# Check server container status
+docker compose ps server
+docker compose logs -f server
+
+# Test WebSocket endpoint
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: $(echo -n "test" | base64)" http://api.localhost/
+
+# Check reverse proxy configuration
+docker compose exec reverse-proxy nginx -t
+docker compose logs reverse-proxy
+
+# Verify port forwarding
+docker compose exec reverse-proxy netstat -tulpn | grep 8080
+```
+
+### Authentication Failures
+
+**Symptoms:**
+- "Authentication failed" errors
+- "Invalid signature" messages
+- "Client not found" errors
+
+**Solutions:**
+```bash
+# Check client key format
+openssl rsa -in private_key.pem -text -noout
+openssl rsa -in private_key.pem -pubout | openssl rsa -pubin -text -noout
+
+# Verify signature generation
+python3 -c "
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
+import base64
+
+# Test signature verification
+private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+message = b'test_message'
+signature = private_key.sign(message, padding.PKCS1v15(), hashes.SHA256())
+print('Signature:', base64.b64encode(signature).decode())
+"
+
+# Check server-side validation
+docker compose logs server | grep -E "(signature|authentication|nonce)"
+```
+
+### Session Management Issues
+
+**Symptoms:**
+- "Session mismatch" errors
+- Clients disconnected unexpectedly
+- Multiple login attempts required
+
+**Solutions:**
+```bash
+# Check session timeouts
+docker compose logs server | grep -E "(session|heartbeat|expired)"
+
+# Verify WebSocket binding
+docker compose logs server | grep "WebSocket"
+
+# Test heartbeat mechanism
+# In Python client, ensure heartbeat task is running
+# Check heartbeat logs
+docker compose logs server | grep "heartbeat"
+
+# Clear stale sessions
+docker compose restart server
+```
+
+## Client Terminal Issues
+
+### Python Client Problems
+
+**Symptoms:**
+- "Connection refused" errors
+- Import errors for cryptography
+- Key generation failures
+
+**Solutions:**
+```bash
+# Install required packages
+pip install websockets cryptography
+
+# Check Python client dependencies
+python -c "import websockets, cryptography; print('Dependencies OK')"
+
+# Generate test keys
+python -c "
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+
+private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+print('Key generation successful')
+"
+
+# Test connection manually
+python -c "
+import asyncio
+import websockets
+
+async def test():
+    uri = 'ws://api.localhost:5001'
+    async with websockets.connect(uri) as ws:
+        print('Connection successful')
+
+asyncio.run(test())
+"
+```
+
+### Key Management Issues
+
+**Symptoms:**
+- Key files not found
+- Invalid key format errors
+- Permission denied on key files
+
+**Solutions:**
+```bash
+# Check key files
+ls -la private_key.pem public_key.pem
+
+# Fix key file permissions
+chmod 600 private_key.pem
+chmod 644 public_key.pem
+
+# Regenerate keys if corrupted
+rm private_key.pem public_key.pem
+python sender.py  # Will generate new keys
+
+# Validate key format
+openssl rsa -in private_key.pem -check
+openssl rsa -in private_key.pem -pubout -out test_public.pem
+```
+
+## Network and Connectivity
+
+### Host Resolution Issues
+
+**Symptoms:**
+- "Host not found" errors
+- DNS resolution failures
+- Cannot access subdomains
+
+**Solutions:**
+```bash
+# Verify hosts file entries (Windows)
+type C:\Windows\System32\drivers\etc\hosts | findstr localhost
+
+# Verify hosts file entries (Linux/macOS)
+cat /etc/hosts | grep localhost
+
+# Test DNS resolution
+nslookup api.localhost
+nslookup dashboard.localhost
+nslookup client.localhost
+
+# Flush DNS cache (Windows)
+ipconfig /flushdns
+
+# Flush DNS cache (macOS)
+sudo dscacheutil -flushcache
+
+# Flush DNS cache (Linux)
+sudo systemctl restart systemd-resolved
+```
+
+### Port Conflicts
+
+**Symptoms:**
+- Services fail to start
+- "Port already in use" errors
+- Connection timeouts
+
+**Solutions:**
+```bash
+# Check port usage
+netstat -tulpn | grep -E "(5000|5001|8080|6379|80)"
+
+# Find processes using ports
+lsof -i :8080
+lsof -i :5001
+
+# Kill conflicting processes
+sudo kill $(lsof -t -i:8080)
+
+# Use alternative ports
+echo "REVERSE_PROXY_PORT=8081" >> .env
+echo "FIREWALL_PORT=5002" >> .env
+docker compose down && docker compose up -d
+```
+
+## Performance Issues
+
+### High Memory Usage
+
+**Symptoms:**
+- Containers using excessive memory
+- System becoming unresponsive
+- Out of memory errors
+
+**Solutions:**
+```bash
+# Monitor memory usage
+docker stats --no-stream
+
+# Check Redis memory
+docker compose exec redis redis-cli info memory
+
+# Set memory limits
+docker compose exec redis redis-cli config set maxmemory 128mb
+
+# Clear unnecessary data
+curl -X POST http://dashboard.localhost/redis/clear -d "clear_type=private_messages"
+
+# Restart services with memory limits
+docker compose down
+docker compose up -d --scale server=1
+```
+
+### High CPU Usage
+
+**Symptoms:**
+- High CPU usage by containers
+- Slow response times
+- System overheating
+
+**Solutions:**
+```bash
+# Monitor CPU usage
+docker stats --no-stream
+top
+
+# Check firewall performance
+docker compose logs firewall | grep "STATS"
+
+# Reduce connection limits
+# Edit firewall rules: max_attempts_per_minute: 50
+
+# Scale down if needed
+docker compose up -d --scale server=1
+
+# Check for infinite loops in logs
+docker compose logs server | grep -E "(error|loop|infinite)"
+```
+
+## Log Analysis
+
+### Debug Information Collection
+```bash
+# Collect comprehensive debug info
+echo "=== Container Status ===" > debug.log
+docker compose ps >> debug.log
+
+echo "=== Service Logs ===" >> debug.log
+docker compose logs --tail=100 >> debug.log
+
+echo "=== Network Info ===" >> debug.log
+docker network ls >> debug.log
+docker compose exec server netstat -tulpn >> debug.log
+
+echo "=== Redis Info ===" >> debug.log
+docker compose exec redis redis-cli info >> debug.log
+
+echo "=== System Resources ===" >> debug.log
+docker stats --no-stream >> debug.log
+```
+
+### Error Pattern Analysis
+```bash
+# Common error patterns
+docker compose logs | grep -E "(ERROR|FATAL|failed|denied|timeout|refused)"
+
+# Authentication errors
+docker compose logs server | grep -E "(authentication|signature|nonce|expired)"
+
+# Network errors
+docker compose logs | grep -E "(connection|network|timeout|refused)"
+
+# Redis errors
+docker compose logs | grep -E "(redis|NOAUTH|MOVED|CLUSTERDOWN)"
+```
+
+## Emergency Procedures
+
+### Complete System Reset
+```bash
+# Stop all services
+docker compose down -v
+
+# Remove all data
+docker system prune -a --volumes
+
+# Reset configuration
+cp .env.example .env
+cp firewall/rules.json.example firewall/rules.json
+
+# Rebuild and restart
+docker compose up --build -d
+
+# Verify system health
+sleep 60
+curl http://dashboard.localhost/health
+curl http://api.localhost/status
+```
+
+### Service-specific Recovery
+```bash
+# Redis recovery
+docker compose stop redis
+docker volume rm docker-mini-network_redis_data
+docker compose up -d redis
+
+# Firewall recovery
+docker compose stop firewall
+docker compose exec dashboard rm /var/log/shared/firewall/rules.json
+docker compose up -d firewall
+
+# Server recovery
+docker compose stop server
+docker compose up -d --scale server=2
+```
+
+### Data Recovery
+```bash
+# Restore from backup
+docker compose down
+docker volume rm docker-mini-network_redis_data
+
+# Restore Redis data
+docker compose up -d redis
+sleep 10
+docker compose exec redis redis-cli < backup/dump.rdb
+
+# Restore configuration
+cp backup/.env .
+cp backup/rules.json firewall/rules.json
+
+# Restart all services
+docker compose up -d
+```

@@ -1,0 +1,498 @@
+---
+title: Deployment & Operations
+description: Production deployment guidelines, scaling strategies, and operational procedures.
+---
+
+Comprehensive guide for deploying and operating the network security infrastructure in production environments.
+
+## Container Dependencies
+
+### Service Orchestration
+```yaml
+# docker-compose.yml service dependencies
+services:
+  redis:
+    # Base data storage - no dependencies
+
+  firewall:
+    # Network security layer - no dependencies
+    volumes:
+      - shared_logs:/var/log/shared/firewall
+
+  server:
+    depends_on:
+      - redis
+
+  dashboard:
+    depends_on:
+      - redis
+      - firewall
+    volumes:
+      - shared_logs:/var/log/shared/firewall
+
+  reverse-proxy:
+    depends_on:
+      - server
+      - dashboard
+      - client
+```
+
+### Volume Management
+
+**Shared Logging Volume**
+```yaml
+volumes:
+  shared_logs:
+    driver: local
+```
+
+- Firewall logs accessible to dashboard
+- Persistent log retention across restarts
+- Proper permissions (777) for cross-container access
+
+## Development Commands
+
+### Docker Operations
+```bash
+# Start services (foreground)
+docker compose up
+
+# Start services (background)
+docker compose up -d
+
+# Rebuild containers
+docker compose build --no-cache
+
+# Stop and remove containers
+docker compose down
+
+# Remove containers and volumes
+docker compose down -v
+
+# View container status
+docker compose ps
+
+# Scale backend servers
+docker compose up -d --scale server=2
+```
+
+### Service Management
+```bash
+# View logs for specific service
+docker compose logs -f server
+
+# Execute commands in container
+docker compose exec server bun run index.ts
+
+# Restart specific service
+docker compose restart reverse-proxy
+
+# Check service health
+docker compose exec dashboard curl http://localhost/health
+```
+
+## Environment Configuration
+
+### Environment Variables (`.env`)
+
+```bash
+# Development mode
+DEBUG=TRUE
+
+# Redis Configuration
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=redis_password
+
+# Service Ports
+FIREWALL_PORT=5001
+REVERSE_PROXY_PORT=8080
+DASHBOARD_PORT=80
+SERVER_PORT=5000
+CLIENT_PORT=80
+FILE_RECEIVER_PORT=7000
+
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_RETENTION_DAYS=30
+```
+
+### Production Environment Variables
+```bash
+# Security
+DEBUG=FALSE
+REDIS_PASSWORD=complex_production_password
+
+# SSL/TLS (for production)
+SSL_CERT_PATH=/certs/server.crt
+SSL_KEY_PATH=/certs/server.key
+
+# Monitoring
+METRICS_ENABLED=true
+HEALTH_CHECK_INTERVAL=30
+
+# Resource Limits
+MAX_CONNECTIONS=1000
+MEMORY_LIMIT=512M
+CPU_LIMIT=1.0
+```
+
+## Production Hardening
+
+### Security Checklist
+- **TLS/SSL**: Enable HTTPS for all communications
+- **Authentication**: Implement additional authentication layers
+- **Rate Limiting**: Adjust rate limits based on expected load
+- **Monitoring**: Implement comprehensive logging and monitoring
+- **Security Audit**: Regular security assessments and updates
+
+### Network Security
+```yaml
+# docker-compose.prod.yml
+services:
+  reverse-proxy:
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./ssl:/etc/ssl/certs:ro
+    environment:
+      - SSL_ENABLED=true
+
+  firewall:
+    cap_add:
+      - NET_ADMIN
+    privileged: false
+    security_opt:
+      - no-new-privileges:true
+```
+
+### Resource Limits
+```yaml
+services:
+  server:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    restart: unless-stopped
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: unless-stopped
+```
+
+## Scaling Guidelines
+
+### Horizontal Scaling
+```bash
+# Scale backend servers
+docker compose up -d --scale server=3
+
+# Scale with custom configuration
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d
+```
+
+### Load Balancer Configuration
+```nginx
+# nginx.conf - Enhanced load balancing
+upstream backend_pool {
+    least_conn;  # Use least connections algorithm
+    server server_1:5000 weight=3 max_fails=3 fail_timeout=30s;
+    server server_2:5000 weight=3 max_fails=3 fail_timeout=30s;
+    server server_3:5000 weight=2 max_fails=3 fail_timeout=30s;
+    keepalive 32;
+}
+```
+
+### Redis Clustering
+```yaml
+# Redis cluster setup (production)
+services:
+  redis-node-1:
+    image: redis:7-alpine
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf
+
+  redis-node-2:
+    image: redis:7-alpine
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf
+
+  redis-node-3:
+    image: redis:7-alpine
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf
+```
+
+## Monitoring & Observability
+
+### Health Checks
+```bash
+# Container health checks
+docker compose ps
+docker compose top
+
+# Service-specific health
+curl http://dashboard.localhost/health
+curl http://api.localhost/status
+wget -q --spider http://localhost:5001 # Firewall health
+```
+
+### Log Aggregation
+```bash
+# Centralized logging
+docker compose logs --follow --timestamps
+
+# Service-specific logs
+docker compose logs -f firewall | grep "BLOCKED"
+docker compose logs -f server | grep "ERROR"
+docker compose logs -f dashboard | grep "Redis"
+```
+
+### Metrics Collection
+```yaml
+# docker-compose.monitoring.yml
+services:
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
+
+## Backup & Recovery
+
+### Data Backup
+```bash
+# Redis data backup
+docker compose exec redis redis-cli --rdb /backup/dump.rdb
+
+# Export Redis data via dashboard
+curl http://dashboard.localhost/redis/export > backup-$(date +%Y%m%d).json
+
+# Configuration backup
+tar -czf config-backup-$(date +%Y%m%d).tar.gz .env firewall/rules.json
+```
+
+### Disaster Recovery
+```bash
+# Restore from backup
+docker compose down
+docker volume rm docker-mini-network_redis_data
+docker compose up -d redis
+docker compose exec redis redis-cli < backup/dump.rdb
+
+# Restore configuration
+cp backup/.env .
+cp backup/rules.json firewall/rules.json
+docker compose restart
+```
+
+## Performance Optimization
+
+### Resource Monitoring
+```bash
+# Monitor resource usage
+docker stats
+
+# Specific service monitoring
+docker compose exec server top
+docker compose exec redis redis-cli info memory
+docker compose exec firewall ps aux
+```
+
+### Database Optimization
+```bash
+# Redis optimization
+docker compose exec redis redis-cli config set maxmemory 256mb
+docker compose exec redis redis-cli config set maxmemory-policy allkeys-lru
+
+# Database maintenance
+docker compose exec redis redis-cli bgrewriteaof
+docker compose exec redis redis-cli bgsave
+```
+
+### Network Performance
+```nginx
+# nginx.conf optimizations
+worker_processes auto;
+worker_connections 2048;
+
+# Enable gzip compression
+gzip on;
+gzip_types text/plain application/json text/css application/javascript;
+
+# Connection pooling
+upstream backend_pool {
+    keepalive 64;
+    keepalive_requests 1000;
+    keepalive_timeout 60s;
+}
+```
+
+## Security Hardening
+
+### Container Security
+```yaml
+services:
+  server:
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1001:1001"
+
+  firewall:
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+```
+
+### Network Isolation
+```yaml
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+  backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+```
+
+### SSL/TLS Configuration
+```yaml
+# Production SSL setup
+services:
+  reverse-proxy:
+    volumes:
+      - ./ssl/fullchain.pem:/etc/ssl/certs/fullchain.pem:ro
+      - ./ssl/privkey.pem:/etc/ssl/private/privkey.pem:ro
+    environment:
+      - SSL_CERTIFICATE=/etc/ssl/certs/fullchain.pem
+      - SSL_PRIVATE_KEY=/etc/ssl/private/privkey.pem
+```
+
+## Maintenance Procedures
+
+### Regular Maintenance
+```bash
+# Weekly maintenance script
+#!/bin/bash
+
+# Backup data
+docker compose exec redis redis-cli bgsave
+curl http://dashboard.localhost/redis/export > "backup-$(date +%Y%m%d).json"
+
+# Clean old logs
+docker compose exec dashboard find /var/log -name "*.log" -mtime +7 -delete
+
+# Update images
+docker compose pull
+docker compose up -d
+
+# Health check
+sleep 30
+docker compose ps
+curl -f http://dashboard.localhost/health || echo "Health check failed"
+```
+
+### Performance Tuning
+```bash
+# Monitor and tune Redis
+docker compose exec redis redis-cli --latency-history
+docker compose exec redis redis-cli info stats | grep operations
+
+# Monitor firewall performance
+docker compose logs firewall | grep "STATS" | tail -10
+
+# Check connection pools
+docker compose exec reverse-proxy nginx -s reload
+```
+
+## Troubleshooting Common Issues
+
+### Container Startup Issues
+```bash
+# Check container status
+docker compose ps
+
+# View startup logs
+docker compose logs --tail=50 server
+docker compose logs --tail=50 firewall
+docker compose logs --tail=50 dashboard
+
+# Check port conflicts
+netstat -tulpn | grep -E "(5000|5001|8080|6379)"
+```
+
+### Network Connectivity
+```bash
+# Test internal networking
+docker compose exec server curl http://redis:6379
+docker compose exec dashboard curl http://firewall:5001
+docker compose exec reverse-proxy curl http://server:5000/status
+
+# Test external access
+curl http://api.localhost/status
+curl http://dashboard.localhost/health
+```
+
+### Volume Issues
+```bash
+# Check volume permissions
+docker compose exec dashboard ls -la /var/log/shared/firewall/
+docker compose exec firewall ls -la /var/log/shared/firewall/
+
+# Fix permissions
+docker compose exec dashboard chmod 777 /var/log/shared/firewall/
+docker compose restart dashboard firewall
+```
+
+## Production Deployment Checklist
+
+### Pre-deployment
+-  Environment variables configured
+-  SSL certificates installed
+-  Host file entries configured
+-  Firewall rules customized
+-  Resource limits set
+-  Monitoring configured
+
+### Deployment
+-  Build containers with production tags
+-  Deploy with docker-compose.prod.yml
+-  Verify all services healthy
+-  Test authentication flow
+-  Validate firewall rules
+-  Check log output
+
+### Post-deployment
+-  Monitor resource usage
+-  Validate backup procedures
+-  Test failover scenarios
+-  Document configuration changes
+-  Set up alerting
+-  Schedule maintenance windows
