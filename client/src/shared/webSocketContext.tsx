@@ -21,6 +21,9 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       setStatus("open");
       queue.current.forEach(msg => ws.send(JSON.stringify(msg)));
       queue.current = [];
+
+      try{ ws.send(JSON.stringify({ command: 'subscribe', topic: 'global' })); }
+      catch(e){ console.error("Failed to subscribe to global topic", e); }
     };
 
     ws.onclose = () => setStatus("closed");

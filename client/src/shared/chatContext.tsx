@@ -201,6 +201,29 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           }
 
           if(msg.event){
+            switch(msg.event){
+              case 'client_registered':
+                setClients(prev => [...prev, { client_id: msg.client_id, room_id: null, last_seen: msg.timestamp, online: true }]);
+                break;
+
+              case 'client_online':
+                setClients(prev => prev.map(c => c.client_id === msg.client_id ? { ...c, online: true, last_seen: msg.timestamp } : c));
+                break;
+
+              case 'client_offline':
+                setClients(prev => prev.map(c => c.client_id === msg.client_id ? { ...c, online: false } : c));
+                break;
+
+              case 'client_ecdh_updated':
+                pendingEcdh.current[msg.client_id]?.(msg.ecdh_key);
+                break;
+
+              // default: console.log("Evento broadcast non gestito:", msg);
+            }
+          }
+
+
+          if(msg.event){
             if(msg.event === 'get_ecdh_key'){
               if(msg.ecdh_key && msg.target_user){
                 try{ localStorage.setItem(`ecdh_peer:${msg.target_user}`, msg.ecdh_key); } catch {}
