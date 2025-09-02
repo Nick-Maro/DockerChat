@@ -2,7 +2,7 @@ import { type ServerWebSocket, type Server } from "bun";
 import { DataManager } from "./dataManager";
 import { storage } from "./storage";
 import { CONFIG } from "./config";
-import {isExpired, getCurrentISOString, generateUUID} from "./utils/utils.ts";
+import { getCurrentISOString, generateUUID} from "./utils/utils.ts";
 import { CryptoAuth } from "./utils/cryptography/auth.ts";
 import { AuthenticationMiddleware } from "./utils/cryptography/auth-middleware.ts"
 import { SecureSession } from "./utils/cryptography/session.ts"
@@ -311,12 +311,17 @@ export class CommandHandler {
                 await storage.setRoom(room_name, newRoom);
                 await this.joinRoom(client_id, currentClient, room_name);
                 const roomInfo = await this.dataManager.getRoomInfo(room_name);
-                this.server.publish("global", JSON.stringify({
-                    event: "room_created",
-                    room_name: room_name,
-                    client_id: client_id,
-                    clients_in_room: roomInfo?.clientCount || 1
-                }));
+                for (const [otherClientId, otherWs] of wsClientMap.entries()) {
+                    if (otherClientId === client_id) continue;
+                    if (otherWs.readyState === 1) {
+                        otherWs.send(JSON.stringify({
+                            event: "room_created",
+                            room_name: room_name,
+                            client_id: client_id,
+                            clients_in_room: roomInfo?.clientCount || 1
+                        }));
+                    }
+                }
 
                 response = {
                     ...response,
@@ -455,7 +460,7 @@ export class CommandHandler {
                         from: client_id,
                         to: to_client_id,
                         encrypted: data?.encrypted === true,
-                        textLength: typeof message_text === 'string' ? message_text.length : undefined,
+                        textLength: message_text.length || undefined,
                         contentLength: typeof data?.content === 'string' ? data.content.length : undefined,
                         hasSignature: !!data?.signature,
                         isFile: data?.file === true
@@ -507,7 +512,7 @@ export class CommandHandler {
                 if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
                 if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
 
-                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+                Utils.debug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
 
                 // to fix
                 this.server.publish("global", JSON.stringify(messageData));
