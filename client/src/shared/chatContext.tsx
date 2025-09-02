@@ -213,6 +213,19 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 pendingEcdh.current[msg.client_id]?.(msg.ecdh_key);
                 break;
 
+              case 'room_created':
+                if(msg.room_name){
+                  const newRoom: Room = {
+                    name: msg.room_name,
+                    clients: msg.clients_in_room || 1,
+                    messages: 0,
+                    created_at: new Date().toISOString(),
+                    last_activity: new Date().toISOString()
+                  };
+                  setRooms(prev => [...prev, newRoom]);
+                }
+                break;
+
               // default: console.log("Evento broadcast non gestito:", msg);
             }
           }
