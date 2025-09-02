@@ -101,6 +101,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
     (async () => {
       for(const msg of slice){
+        console.log(msg)
         try{
           if(msg.command){
             if (msg.command === 'list_rooms') setRooms(msg.rooms || []);

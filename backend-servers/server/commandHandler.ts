@@ -512,7 +512,7 @@ export class CommandHandler {
                 if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
                 if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
 
-                Utils.debug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
 
                 // to fix
                 this.server.publish("global", JSON.stringify(messageData));

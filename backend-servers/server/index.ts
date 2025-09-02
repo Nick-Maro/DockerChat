@@ -18,18 +18,46 @@ export const websocket: WebSocketHandler<WebSocketData> = {
     open(ws) {
         printDebug(`[WS] Connection opened.`);
         ws.subscribe("global");
+
+        const pingInterval = setInterval(() => {
+            if(ws.readyState === 1) ws.ping();
+            else clearInterval(pingInterval);
+        }, 30000);
+        
+        ws.data.pingInterval = pingInterval;
     },
     message(ws, message) {
+        let data;
+        try{ data = JSON.parse(message.toString()); }
+        catch{
+            commandHandler.handle(ws, message, wsClientMap);
+            return;
+        }
+        
+        if(data.type === 'ping'){
+            ws.send(JSON.stringify({ 
+                type: 'pong', 
+                timestamp: data.timestamp,
+                server_time: Date.now()
+            }));
+            return;
+        }
+
         commandHandler.handle(ws, message, wsClientMap);
     },
     ping(ws, data) {
         ws.pong(data);
         printDebug(`[WS] Responded to ping from client: ${ws.data.clientId}`);
     },
+    pong(ws, data) {
+        printDebug(`[WS] Received pong from client: ${ws.data.clientId}`);
+        if(ws.data.clientId){ ws.data.lastPong = Date.now(); }
+    },
     close(ws, code, reason) {
-        printDebug(`[WS] Connection closed: ${code} ${reason}`);
+        printDebug(`[WS] Connection closed: code=${code}, reason=${reason}, clientId=${ws.data.clientId}`);
+        if(ws.data.pingInterval) clearInterval(ws.data.pingInterval);
         const clientId = ws.data.clientId;
-        if (clientId) wsClientMap.delete(clientId);
+        if(clientId) wsClientMap.delete(clientId);
     },
 };
 
@@ -94,7 +122,10 @@ const server: Server = Bun.serve({
 
     websocket: {
         ...websocket,
-        idleTimeout: 60,
+        idleTimeout: 120,
+        maxBackpressure: 64 * 1024,
+        maxCompressedSize: 64 * 1024,
+        maxPayloadLength: 16 * 1024 * 1024,
     },
 });
 

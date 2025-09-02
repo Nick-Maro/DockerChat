@@ -131,4 +131,6 @@ export interface WebSocketData {
     wsId: string;
     clientId: string | null;
     authenticated: boolean;
+    pingInterval?: any;
+    lastPong?: number;
 }
