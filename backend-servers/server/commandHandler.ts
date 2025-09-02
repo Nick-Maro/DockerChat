@@ -311,6 +311,13 @@ export class CommandHandler {
                 await storage.setRoom(room_name, newRoom);
                 await this.joinRoom(client_id, currentClient, room_name);
                 const roomInfo = await this.dataManager.getRoomInfo(room_name);
+                this.server.publish("global", JSON.stringify({
+                    event: "room_created",
+                    room_name: room_name,
+                    client_id: client_id,
+                    clients_in_room: roomInfo?.clientCount || 1
+                }));
+
                 response = {
                     ...response,
                     message: `Created room '${room_name}'`,
