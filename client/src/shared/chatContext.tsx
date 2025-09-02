@@ -22,7 +22,6 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const [privateMessages, setPrivateMessages] = useState<Record<string, Message[]>>({});
 
   // caches & helpers
-  const processed = useRef(new Set<string>());
   const lastMessageIndex = useRef(0);
 
   // in-memory shared key cache and pending ecdh resolvers
@@ -103,10 +102,6 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     (async () => {
       for(const msg of slice){
         try{
-          const serialized = JSON.stringify(msg);
-          if(processed.current.has(serialized)) continue;
-          processed.current.add(serialized);
-
           if(msg.command){
             if (msg.command === 'list_rooms') setRooms(msg.rooms || []);
             else if (msg.command === 'list_clients') setClients(msg.clients || []);
@@ -128,11 +123,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               }
             }
             else if (msg.command?.startsWith('join_room:')) {
-              if (msg.error) {
-                console.error('Error joining room:', msg.error);
-              } else if (msg.room_name) {
+              console.log("JOINO ROOM", msg.room_name);
+              if(msg.error) console.error('Error joining room:', msg.error);
+              else if(msg.room_name){
                 const room = rooms.find(r => r.name === msg.room_name);
-                if (room) {
+                if(room){
                   setCurrentRoom(room);
                   setRoomMessages([]);
                   await sendAuthenticatedMessage(sendMessage, { command: 'get_messages', client_id: username });
@@ -354,11 +349,13 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     }
   }, [status, username]);
 
-  const joinRoom = (roomName: string) => { 
-    if (!username || status !== 'open') return; 
-    if (currentRoom?.name === roomName) return; 
-    sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username }); 
+  const joinRoom = (roomName: string) => {
+    if(!username || status !== 'open') return;
+    if(currentRoom?.name === roomName) return;
+    setCurrentClient(null);
+    sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username });
   };
+
   const leaveRoom = () => { if (username && currentRoom) { sendAuthenticatedMessage(sendMessage, { command: 'leave_room', client_id: username }); setCurrentRoom(null); setRoomMessages([]); } };
 
   const sendMessageToRoom = (text: string) => {
@@ -452,6 +449,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   };
 
   const fetchPrivateMessages = async (clientId: string) => {
+    setCurrentRoom(null);
     setCurrentClient(clients.find(c => c.client_id === clientId) || null);
     await sendAuthenticatedMessage(sendMessage, { command: 'get_private_messages', client_id: username, target_client_id: clientId });
   };
