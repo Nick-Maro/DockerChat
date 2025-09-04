@@ -8,6 +8,7 @@ import { useClient } from '../../shared/authContext';
 // icons
 import dotsVerticalWhite from '../../assets/icons/dots-vertical-white.svg';
 import goBack2D2D2D from '../../assets/icons/chevron-left-white.svg';
+import Avatar from '../../components/avatar';
 
 export function Home(){
 	const { currentRoom, currentClient, setCurrentRoom, setCurrentClient } = useChat();
@@ -25,7 +26,7 @@ export function Home(){
 
 			<section className={`${styles.sidebar} ${(currentRoom || currentClient) ? styles.hideSidebar : ''}`}>
 				<div className={`${styles.profile} flex`}>
-					<img src={`https://avatar.iran.liara.run/public?username=${myUsername}`} alt="pfp" />
+					<Avatar username={myUsername} />
 					<div className={`${styles.name} center-flex column`}>
 						<h2>{myUsername}</h2>
 						<p>My Account</p>
