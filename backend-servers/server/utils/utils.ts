@@ -17,6 +17,26 @@ export function getCurrentISOString(): string {
     return new Date().toISOString();
 }
 
-export function printDebug(message: string) {
-    if (CONFIG.DEBUG) console.log(message);
+export function printDebug(message: string, level: DebugLevel) {
+    if (CONFIG.DEBUG) {
+        switch(level) {
+            case DebugLevel.LOG:
+                console.log(message);
+                break;
+            case DebugLevel.WARN:
+                console.log(message);
+                break;
+            case DebugLevel.ERROR:
+                console.error(message);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+export enum DebugLevel {
+    LOG,
+    WARN,
+    ERROR
 }

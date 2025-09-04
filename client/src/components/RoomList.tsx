@@ -26,8 +26,8 @@ export function RoomList(){
                         <img src={addIcon} alt="add" />
                     </button>
                 </li>
-                {rooms.map((room) => (
-                    <li key={room.name} className={currentRoom?.name === room.name ? styles.activeRoom : ''}>
+                {rooms.map((room, index) => (
+                    <li key={`${room.name}-${index}`} className={currentRoom?.name === room.name ? styles.activeRoom : ''}>
                         <img
                             onClick={() => handleJoinRoom(room.name)}
                             title={`${room.name} — ${room.clients} clients, ${room.messages} messages`}

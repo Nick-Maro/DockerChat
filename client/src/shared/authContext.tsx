@@ -112,13 +112,12 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
 
   useEffect(() => {
     if(!username || status !== 'open') return;
-    // send heartbeat every 30 seconds
-    const t = setInterval(() => {
-      (async() => {
-        await sendAuthenticatedMessage(sendMessage, {command: 'heartbeat', client_id: username});
-      })();
-    }, 30_000);
-    return () => clearInterval(t);
+    const heartbeatInterval = setInterval(async () => {
+        try{ await sendAuthenticatedMessage(sendMessage, { command: 'heartbeat',  client_id: username }); }
+        catch(error){ console.error('Heartbeat failed:', error); }
+    }, 25000);
+    
+    return () => clearInterval(heartbeatInterval);
   }, [username, status, sendMessage]);
 
   return (

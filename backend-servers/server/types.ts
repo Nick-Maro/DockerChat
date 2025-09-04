@@ -1,6 +1,6 @@
 export interface Client {
     id: string,
-    ecdh_key: string;
+    ecdh_key?: string;
     public_key: string;
     room_id: string | null;
     last_seen: string;
@@ -19,6 +19,12 @@ export interface Message {
     signature?: string;
     timestamp: string;
     public_key: string;
+    verified?: boolean;
+    file?: boolean;
+    filename?: string;
+    mimetype?: string;
+    content?: string;
+    encrypted?: boolean;
 }
 
 export interface PrivateMessage {
@@ -33,6 +39,7 @@ export interface PrivateMessage {
     filename?: string;
     mimetype?: string;
     content?: string;
+    encrypted?: boolean;
 }
 
 export interface Room {
@@ -47,6 +54,13 @@ export interface WSMessage {
     public_key?: string;
     client_id?: string;
     signature?: string;
+    encrypted?: boolean;
+    content?: string;
+    sk_fingerprint?: string;
+    sender_ecdh_public?: string;
+    file?: boolean;
+    filename?: string;
+    mimetype?: string;
     [key: string]: any;
 }
 
@@ -61,6 +75,7 @@ export interface WSResponse {
     message_id?: string;
     to_client?: string;
     client_status?: string;
+    file?: boolean;
     private_messages?: Array<PrivateMessage & { direction: 'sent' | 'received' }>;
     messages?: Message[];
     clients?: Array<{
@@ -116,4 +131,6 @@ export interface WebSocketData {
     wsId: string;
     clientId: string | null;
     authenticated: boolean;
+    pingInterval?: any;
+    lastPong?: number;
 }

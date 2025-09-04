@@ -1,12 +1,12 @@
-import { type ServerWebSocket, type Server } from "bun";
-import { DataManager } from "./dataManager";
-import { storage } from "./storage";
-import { CONFIG } from "./config";
-import {isExpired, getCurrentISOString, generateUUID} from "./utils/utils.ts";
-import { CryptoAuth } from "./utils/cryptography/auth.ts";
-import { AuthenticationMiddleware } from "./utils/cryptography/auth-middleware.ts"
-import { SecureSession } from "./utils/cryptography/session.ts"
-import type {Client, Room, WSMessage, WebSocketData, WSResponse} from './types';
+import {type Server, type ServerWebSocket} from "bun";
+import {DataManager} from "./dataManager";
+import {storage} from "./storage";
+import {CONFIG} from "./config";
+import {DebugLevel, generateUUID, getCurrentISOString, printDebug } from "./utils/utils.ts";
+import {CryptoAuth} from "./utils/cryptography/auth.ts";
+import {AuthenticationMiddleware} from "./utils/cryptography/auth-middleware.ts"
+import {SecureSession} from "./utils/cryptography/session.ts"
+import type {Client, Room, WebSocketData, WSMessage, WSResponse} from './types';
 
 export class CommandHandler {
     constructor(private dataManager: DataManager, private serverId: string, private server: Server){ }
@@ -23,6 +23,16 @@ export class CommandHandler {
             ws.send(JSON.stringify({ error: "Invalid JSON" }));
             return;
         }
+        try {
+            const incomingPreview = {
+                command: (data && data.command) || null,
+                client_id: (data && data.client_id) || null,
+                encrypted: data?.encrypted === true,
+                contentLength: typeof data?.content === 'string' ? data.content.length : undefined
+            };
+            printDebug('[CMD] Incoming WS message preview:' + JSON.stringify(incomingPreview), DebugLevel.LOG);
+        }
+        catch (diagErr) { printDebug('[CMD] Failed to log incoming preview:' + diagErr, DebugLevel.WARN); }
 
         const { command } = data;
         let { client_id } = data;
@@ -247,6 +257,16 @@ export class CommandHandler {
 
                 if (!targetClient.ecdh_key) {
                     response.error = "User has not uploaded ECDH key yet";
+                    try {
+                        const targetWs = wsClientMap.get(target_username);
+                        if (targetWs && targetWs.readyState === 1) {
+                            targetWs.send(JSON.stringify({ event: 'request_upload_ecdh', requester: clientId }));
+                            printDebug(`[CMD] Requested ECDH upload from ${target_username} on behalf of ${clientId}`, DebugLevel.LOG);
+                        }
+                    } catch (notifyErr) {
+                        printDebug(`[CMD] Failed to request ECDH upload for ${target_username}:` + notifyErr, DebugLevel.WARN);
+                    }
+
                     break;
                 }
 
@@ -260,6 +280,7 @@ export class CommandHandler {
                     same_room: sameRoom,
                     debug: debug_info
                 };
+                (response as any).event = 'get_ecdh_key';
                 break;
             }
             case command.startsWith("create_room:"): {
@@ -272,8 +293,8 @@ export class CommandHandler {
                     response.error = "Room name is too long (max 50 characters)";
                     break;
                 }
-                if (!/^[a-zA-Z0-9_-]+$/.test(room_name)) {
-                    response.error = "Room name can only contain letters, numbers, underscores, and hyphens";
+                if (!/^[a-zA-Z0-9_\-\s]+$/.test(room_name)) {
+                    response.error = "Room name can only contain letters, numbers, underscores, hyphens, and spaces";
                     break;
                 }
                 const room = await this.dataManager.getRoom(room_name);
@@ -290,6 +311,18 @@ export class CommandHandler {
                 await storage.setRoom(room_name, newRoom);
                 await this.joinRoom(client_id, currentClient, room_name);
                 const roomInfo = await this.dataManager.getRoomInfo(room_name);
+                for (const [otherClientId, otherWs] of wsClientMap.entries()) {
+                    if (otherClientId === client_id) continue;
+                    if (otherWs.readyState === 1) {
+                        otherWs.send(JSON.stringify({
+                            event: "room_created",
+                            room_name: room_name,
+                            client_id: client_id,
+                            clients_in_room: roomInfo?.clientCount || 1
+                        }));
+                    }
+                }
+
                 response = {
                     ...response,
                     message: `Created room '${room_name}'`,
@@ -334,7 +367,7 @@ export class CommandHandler {
             }
             case command.startsWith("send_message:"): {
                 const message_text = command.split(":", 2)[1];
-                if(!message_text || !this.validateMessage(message_text)){
+                if(!data?.encrypted && (!message_text || !this.validateMessage(message_text))){
                     response.error = "Invalid message length";
                     break;
                 }
@@ -344,10 +377,11 @@ export class CommandHandler {
                     const filename = data?.filename;
                     const mimetype = data?.mimetype; 
                     const content = data?.content;
+                    const encrypted = data?.encrypted === true;
 
                     await this.dataManager.addMessageToRoom(room_id, {
                         from_client: clientId,
-                        text: message_text,
+                        text: encrypted ? (data?.content || '') : message_text,
                         signature: data.signature,
                         timestamp: getCurrentISOString(),
                         public_key: currentClient.public_key,
@@ -355,7 +389,8 @@ export class CommandHandler {
                         file: isFile,
                         filename: filename,
                         mimetype: mimetype,
-                        content: content
+                        content: content,
+                        encrypted: encrypted
                     });
 
                     const roomClients = await this.dataManager.getRoomClients(room_id);
@@ -367,17 +402,25 @@ export class CommandHandler {
 
                         const messageData = {
                             event: 'room_message_received',
-                            from: client_id,
+                            from_client: client_id,
+                            room_name: room_id,
                             timestamp: getCurrentISOString(),
-                            text: message_text,
-                            file: isFile
+                            text: encrypted ? (data?.content || '') : message_text,
+                            file: isFile,
+                            encrypted: encrypted,
+                            content: encrypted ? (data?.content || '') : message_text
                         };
                         
 
                         if(isFile){
-                            messageData.filename = filename;
-                            messageData.mimetype = mimetype;
-                            messageData.content = content;
+                            (messageData as any).filename = filename;
+                            (messageData as any).mimetype = mimetype;
+                            (messageData as any).content = content;
+                        }
+
+                        if(encrypted) {
+                            if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
+                            if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
                         }
                         
                         otherWs.send(JSON.stringify(messageData));
@@ -401,14 +444,30 @@ export class CommandHandler {
                 }
 
                 const to_client_id = parts[1];
-                const message_text = parts[2];
+                let message_text = parts[2];
 
-                if (!message_text || !this.validateMessage(message_text)) {
-                    response.error = "Invalid message length";
-                    break;
+                if(data?.encrypted === true && data?.content) message_text = data.content;
+                if (!(data?.encrypted === true)){
+                    if(!message_text || !this.validateMessage(message_text)){
+                        response.error = "Invalid message length";
+                        break;
+                    }
                 }
 
                 const client = await this.dataManager.getClient(to_client_id);
+                try {
+                    const diag = {
+                        from: client_id,
+                        to: to_client_id,
+                        encrypted: data?.encrypted === true,
+                        textLength: message_text.length || undefined,
+                        contentLength: typeof data?.content === 'string' ? data.content.length : undefined,
+                        hasSignature: !!data?.signature,
+                        isFile: data?.file === true
+                    };
+                    printDebug('[CMD] send_private payload diag:' + JSON.stringify(diag), DebugLevel.LOG);
+                }
+                catch(dErr){ printDebug('[CMD] Failed to log send_private diag:' + dErr, DebugLevel.WARN); }
 
                 if (!client) {
                     response.error = "Recipient Client not found";
@@ -428,7 +487,8 @@ export class CommandHandler {
                     isFile,
                     filename,
                     mimetype,
-                    content
+                    content,
+                    data?.encrypted === true
                 );
 
                 const messageData = {
@@ -439,7 +499,8 @@ export class CommandHandler {
                     timestamp: new Date().toISOString(),
                     verified: true,
                     file: isFile,
-                    message_id: message_id
+                    message_id: message_id,
+                    encrypted: data?.encrypted === true
                 };
 
                 if (isFile) {
@@ -448,7 +509,10 @@ export class CommandHandler {
                     messageData.content = content;
                 }
 
-                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+                if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
+                if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
+
+                printDebug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`, DebugLevel.LOG);
 
                 // to fix
                 this.server.publish("global", JSON.stringify(messageData));
@@ -629,7 +693,7 @@ export class CommandHandler {
             if (!CONFIG.DEBUG && response.debug) delete response.debug;
             if (ws.readyState === 1) ws.send(JSON.stringify(response));
         } catch (error) {
-            console.error('[ERROR] Failed to send response:', error);
+            printDebug('[ERROR] Failed to send response:' + error, DebugLevel.ERROR);
         }
     }
 
