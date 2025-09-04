@@ -1,10 +1,10 @@
-import { type Server, type ServerWebSocket, type WebSocketHandler } from "bun";
-import { storage } from "./storage";
-import { DataManager } from "./dataManager";
-import { CommandHandler } from "./commandHandler";
-import { CONFIG } from "./config";
-import { isExpired, generateUUID, printDebug } from "./utils/utils.ts";
-import type { ServerStatus , WebSocketData} from './types';
+import {type Server, type ServerWebSocket, type WebSocketHandler} from "bun";
+import {storage} from "./storage";
+import {DataManager} from "./dataManager";
+import {CommandHandler} from "./commandHandler";
+import {CONFIG} from "./config";
+import {DebugLevel, generateUUID, isExpired, printDebug} from "./utils/utils.ts";
+import type {ServerStatus, WebSocketData} from './types';
 
 await storage.initialize();
 const dataManager = new DataManager();
@@ -16,7 +16,7 @@ console.log(`Bun server starting on ${CONFIG.SERVER.HOST}:${CONFIG.SERVER.PORT}.
 
 export const websocket: WebSocketHandler<WebSocketData> = {
     open(ws) {
-        printDebug(`[WS] Connection opened.`);
+        printDebug(`[WS] Connection opened.`, DebugLevel.LOG);
         ws.subscribe("global");
 
         const pingInterval = setInterval(() => {
@@ -28,36 +28,56 @@ export const websocket: WebSocketHandler<WebSocketData> = {
     },
     message(ws, message) {
         let data;
-        try{ data = JSON.parse(message.toString()); }
-        catch{
+        try { data = JSON.parse(message.toString()); }
+        catch {
             commandHandler.handle(ws, message, wsClientMap);
             return;
         }
-        
+
         if(data.type === 'ping'){
-            ws.send(JSON.stringify({ 
-                type: 'pong', 
+            ws.send(JSON.stringify({
+                type: 'pong',
                 timestamp: data.timestamp,
                 server_time: Date.now()
             }));
+            if(data.client_id) {
+                ws.data.clientId = data.client_id;
+                ws.data.lastPong = Date.now();
+                if (!wsClientMap.has(data.client_id) || wsClientMap.get(data.client_id)?.data.wsId !== ws.data.wsId) {
+                    dataManager.setClientOnline(data.client_id, true);
+                    dataManager.updateClientLastSeen(data.client_id);
+                    wsClientMap.set(data.client_id, ws);
+                }
+            }
             return;
+        }
+
+        if (data.client_id) {
+            ws.data.clientId = data.client_id;
+            const existingSocket = wsClientMap.get(data.client_id);
+            if (!existingSocket || existingSocket.data.wsId !== ws.data.wsId) {
+                printDebug(`[WS] Re-associating clientId=${data.client_id} with new socket.`, DebugLevel.LOG);
+                dataManager.setClientOnline(data.client_id, true);
+                dataManager.updateClientLastSeen(data.client_id);
+                wsClientMap.set(data.client_id, ws);
+            }
         }
 
         commandHandler.handle(ws, message, wsClientMap);
     },
     ping(ws, data) {
         ws.pong(data);
-        printDebug(`[WS] Responded to ping from client: ${ws.data.clientId}`);
+        printDebug(`[WS] Responded to ping from client: ${ws.data.clientId}`, DebugLevel.LOG);
     },
     pong(ws, data) {
-        printDebug(`[WS] Received pong from client: ${ws.data.clientId}`);
+        printDebug(`[WS] Received pong from client: ${ws.data.clientId}`, DebugLevel.LOG);
         if(ws.data.clientId){ ws.data.lastPong = Date.now(); }
     },
     close(ws, code, reason) {
-        printDebug(`[WS] Connection closed: code=${code}, reason=${reason}, clientId=${ws.data.clientId}`);
+        printDebug(`[WS] Connection closed: code=${code}, reason=${reason}, clientId=${ws.data.clientId}`, DebugLevel.LOG);
         if(ws.data.pingInterval) clearInterval(ws.data.pingInterval);
         const clientId = ws.data.clientId;
-        if(clientId) wsClientMap.delete(clientId);
+        if(clientId) dataManager.setClientOnline(clientId, false);
     },
 };
 
