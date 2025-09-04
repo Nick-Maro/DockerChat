@@ -1,12 +1,12 @@
-import { type ServerWebSocket, type Server } from "bun";
-import { DataManager } from "./dataManager";
-import { storage } from "./storage";
-import { CONFIG } from "./config";
-import { getCurrentISOString, generateUUID} from "./utils/utils.ts";
-import { CryptoAuth } from "./utils/cryptography/auth.ts";
-import { AuthenticationMiddleware } from "./utils/cryptography/auth-middleware.ts"
-import { SecureSession } from "./utils/cryptography/session.ts"
-import type {Client, Room, WSMessage, WebSocketData, WSResponse} from './types';
+import {type Server, type ServerWebSocket} from "bun";
+import {DataManager} from "./dataManager";
+import {storage} from "./storage";
+import {CONFIG} from "./config";
+import {DebugLevel, generateUUID, getCurrentISOString, printDebug } from "./utils/utils.ts";
+import {CryptoAuth} from "./utils/cryptography/auth.ts";
+import {AuthenticationMiddleware} from "./utils/cryptography/auth-middleware.ts"
+import {SecureSession} from "./utils/cryptography/session.ts"
+import type {Client, Room, WebSocketData, WSMessage, WSResponse} from './types';
 
 export class CommandHandler {
     constructor(private dataManager: DataManager, private serverId: string, private server: Server){ }
@@ -30,9 +30,9 @@ export class CommandHandler {
                 encrypted: data?.encrypted === true,
                 contentLength: typeof data?.content === 'string' ? data.content.length : undefined
             };
-            console.log('[CMD] Incoming WS message preview:', JSON.stringify(incomingPreview));
+            printDebug('[CMD] Incoming WS message preview:' + JSON.stringify(incomingPreview), DebugLevel.LOG);
         }
-        catch(diagErr){ console.warn('[CMD] Failed to log incoming preview:', diagErr); }
+        catch (diagErr) { printDebug('[CMD] Failed to log incoming preview:' + diagErr, DebugLevel.WARN); }
 
         const { command } = data;
         let { client_id } = data;
@@ -261,10 +261,10 @@ export class CommandHandler {
                         const targetWs = wsClientMap.get(target_username);
                         if (targetWs && targetWs.readyState === 1) {
                             targetWs.send(JSON.stringify({ event: 'request_upload_ecdh', requester: clientId }));
-                            console.log(`[CMD] Requested ECDH upload from ${target_username} on behalf of ${clientId}`);
+                            printDebug(`[CMD] Requested ECDH upload from ${target_username} on behalf of ${clientId}`, DebugLevel.LOG);
                         }
                     } catch (notifyErr) {
-                        console.warn(`[CMD] Failed to request ECDH upload for ${target_username}:`, notifyErr);
+                        printDebug(`[CMD] Failed to request ECDH upload for ${target_username}:` + notifyErr, DebugLevel.WARN);
                     }
 
                     break;
@@ -465,9 +465,9 @@ export class CommandHandler {
                         hasSignature: !!data?.signature,
                         isFile: data?.file === true
                     };
-                    console.log('[CMD] send_private payload diag:', JSON.stringify(diag));
+                    printDebug('[CMD] send_private payload diag:' + JSON.stringify(diag), DebugLevel.LOG);
                 }
-                catch(dErr){ console.warn('[CMD] Failed to log send_private diag:', dErr); }
+                catch(dErr){ printDebug('[CMD] Failed to log send_private diag:' + dErr, DebugLevel.WARN); }
 
                 if (!client) {
                     response.error = "Recipient Client not found";
@@ -512,7 +512,7 @@ export class CommandHandler {
                 if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
                 if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
 
-                console.log(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`);
+                printDebug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`, DebugLevel.LOG);
 
                 // to fix
                 this.server.publish("global", JSON.stringify(messageData));
@@ -693,7 +693,7 @@ export class CommandHandler {
             if (!CONFIG.DEBUG && response.debug) delete response.debug;
             if (ws.readyState === 1) ws.send(JSON.stringify(response));
         } catch (error) {
-            console.error('[ERROR] Failed to send response:', error);
+            printDebug('[ERROR] Failed to send response:' + error, DebugLevel.ERROR);
         }
     }
 
