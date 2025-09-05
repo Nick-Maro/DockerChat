@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "build:github": "node scripts/fix-yaml.mjs && NODE_ENV=production next build",
+    "build:github": "node scripts/fix-yaml.mjs && GITHUB_PAGES=true next build",
+    "build:local": "node scripts/fix-yaml.mjs && next build",
     "dev": "next dev --turbo",
     "start": "next start",
     "postinstall": "fumadocs-mdx",

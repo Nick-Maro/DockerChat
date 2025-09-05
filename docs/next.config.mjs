@@ -10,11 +10,7 @@ const config = {
   images: {
     unoptimized: true
   },
-  // GitHub Pages deployment
-  ...(process.env.NODE_ENV === 'production' && {
-    assetPrefix: '/docker-mini-network/',
-    basePath: '/docker-mini-network',
-  }),
+  // No special GitHub Pages configuration - let it work as is
 };
 
 export default withMDX(config);
