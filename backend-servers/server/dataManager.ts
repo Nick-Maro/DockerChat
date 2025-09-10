@@ -8,6 +8,15 @@ export class DataManager {
     private lastCleanup = 0;
     private readonly CLEANUP_INTERVAL = 60000; // 1 minute
 
+    private clientCache = new Map<string, {client: Client, timestamp: number}>();
+    private roomCache = new Map<string, {room: Room, timestamp: number}>();
+    private readonly CACHE_TTL = 30000; 
+    private lastCacheCleanup = 0;
+    private readonly CACHE_CLEANUP_INTERVAL = 300000; 
+
+    
+    private pendingOperations = new Set<Promise<any>>();
+
     async cleanExpiredData(): Promise<void> {
         const now = Date.now();
         if (this.cleanupLock || now - this.lastCleanup < this.CLEANUP_INTERVAL) return;
@@ -20,57 +29,137 @@ export class DataManager {
         }
     }
 
+
     private async cleanExpiredDataInternal(): Promise<void> {
-        const expiredClientIds = await storage.getExpiredClientIds(CONFIG.CLIENT_TTL);
+        const [expiredClientIds, rooms] = await Promise.all([
+            storage.getExpiredClientIds(CONFIG.CLIENT_TTL),
+            storage.getRooms()
+        ]);
+
         if (expiredClientIds.length > 0) {
-            for (const clientId of expiredClientIds) {
+            
+            const batchOperations = expiredClientIds.map(async (clientId) => {
                 const client = await storage.getClient(clientId);
                 if (client?.room_id) await this.removeClientFromRoom(clientId, client.room_id);
                 await storage.setClientOnline(clientId, false, false);
-            }
-            /* await storage.batchDeleteClients(expiredClientIds); */
+                this.clientCache.delete(clientId); 
+            });
+            await Promise.all(batchOperations);
         }
-        await this.cleanExpiredRooms();
-        await this.cleanExpiredMessages();
+
+
+        await Promise.all([
+            this.cleanExpiredRooms(),
+            this.cleanExpiredMessages()
+        ]);
+
+        this.cleanCacheIfNeeded();
     }
 
+
+    async getClient(clientId: string): Promise<Client | null> {
+        const cached = this.clientCache.get(clientId);
+        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+            return cached.client;
+        }
+
+        const client = await storage.getClient(clientId);
+        if (client) {
+            this.clientCache.set(clientId, {client, timestamp: Date.now()});
+        }
+        return client;
+    }
+
+    
+    async getRoom(roomId: string): Promise<Room | null> {
+        const cached = this.roomCache.get(roomId);
+        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+            return cached.room;
+        }
+
+        const room = await storage.getRoom(roomId);
+        if (room) {
+            this.roomCache.set(roomId, {room, timestamp: Date.now()});
+        }
+        return room;
+    }
+
+    
     async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
+        this.clientCache.delete(clientId); // Invalida cache
         return storage.setClientOnline(clientId, online, touchLastSeen);
     }
 
+    async updateClientLastSeen(clientId: string): Promise<void> {
+        const client = await this.getClient(clientId);
+        if (client) {
+            client.last_seen = getCurrentISOString();
+            await storage.setClient(clientId, client);
+            this.clientCache.set(clientId, {client, timestamp: Date.now()}); 
+        }
+    }
+
+    
+    private cleanCacheIfNeeded(): void {
+        const now = Date.now();
+        if (now - this.lastCacheCleanup > this.CACHE_CLEANUP_INTERVAL) {
+            for (const [key, value] of this.clientCache.entries()) {
+                if (now - value.timestamp > this.CACHE_TTL) {
+                    this.clientCache.delete(key);
+                }
+            }
+            for (const [key, value] of this.roomCache.entries()) {
+                if (now - value.timestamp > this.CACHE_TTL) {
+                    this.roomCache.delete(key);
+                }
+            }
+            this.lastCacheCleanup = now;
+        }
+    }
+
+    
     private async cleanExpiredRooms(): Promise<void> {
         const rooms = await storage.getRooms();
-        const roomsToDelete: string[] = [];
+        const roomsToDelete = [];
 
         for (const [roomId, roomData] of Object.entries(rooms)) {
             const clientIds = await storage.getRoomClients(roomId);
             const hasActiveClients = clientIds.length > 0;
-            if (!hasActiveClients && isExpired(roomData.last_activity, CONFIG.ROOM_TTL)) roomsToDelete.push(roomId);
+            if (!hasActiveClients && isExpired(roomData.last_activity, CONFIG.ROOM_TTL)) {
+                roomsToDelete.push(roomId);
+                this.roomCache.delete(roomId); 
+            }
         }
 
-        for (const roomId of roomsToDelete) {
-            await storage.deleteRoom(roomId);
+        
+        if (roomsToDelete.length > 0) {
+            await Promise.all(roomsToDelete.map(roomId => storage.deleteRoom(roomId)));
         }
     }
 
+    
     private async cleanExpiredMessages(): Promise<void> {
         const rooms = await storage.getRooms();
-        let cleanedRooms = 0;
+        const roomUpdates: Promise<void>[] = [];
 
         for (const [roomId, roomData] of Object.entries(rooms)) {
             if (roomData.messages && roomData.messages.length > 0) {
                 const originalCount = roomData.messages.length;
                 roomData.messages = roomData.messages.filter(msg => !isExpired(msg.timestamp, CONFIG.MESSAGE_TTL));
+                
                 if (roomData.messages.length !== originalCount) {
-                    await storage.setRoom(roomId, roomData);
-                    cleanedRooms++;
+                    this.roomCache.delete(roomId); 
+                    roomUpdates.push(storage.setRoom(roomId, roomData));
                 }
             }
         }
+
+        
+        await Promise.all(roomUpdates);
     }
 
     async addMessageToRoom(roomId: string, message: Message): Promise<void> {
-        let room = await storage.getRoom(roomId);
+        let room = await this.getRoom(roomId);
         if (!room) {
             room = {
                 clients: {},
@@ -82,11 +171,13 @@ export class DataManager {
         room.messages = room.messages || [];
         room.messages.push(message);
         room.last_activity = getCurrentISOString();
+        
+        this.roomCache.set(roomId, {room, timestamp: Date.now()}); 
         await storage.setRoom(roomId, room);
     }
 
     async addClientToRoom(roomId: string, clientId: string, clientData: ClientInRoom): Promise<void> {
-        let room = await storage.getRoom(roomId);
+        let room = await this.getRoom(roomId);
         if (!room) {
             room = {
                 clients: {},
@@ -97,7 +188,72 @@ export class DataManager {
         }
         room.clients[clientId] = clientData;
         room.last_activity = getCurrentISOString();
+        
+        this.roomCache.set(roomId, {room, timestamp: Date.now()}); 
         await storage.setRoom(roomId, room);
+    }
+
+    async removeClientFromRoom(clientId: string, roomId: string): Promise<void> {
+        try {
+            const [room, client] = await Promise.all([
+                this.getRoom(roomId),
+                this.getClient(clientId)
+            ]);
+            
+            const updates: Promise<any>[] = [];
+            
+            if (room && room.clients[clientId]) {
+                delete room.clients[clientId];
+                room.last_activity = getCurrentISOString();
+                this.roomCache.set(roomId, {room, timestamp: Date.now()});
+                updates.push(storage.setRoom(roomId, room));
+            }
+            
+            if (client && client.room_id === roomId) {
+                client.room_id = null;
+                this.clientCache.set(clientId, {client, timestamp: Date.now()}); 
+                updates.push(storage.setClient(clientId, client));
+            }
+            
+            updates.push(storage.removeClientFromRoom(clientId, roomId));
+            
+
+            await Promise.all(updates);
+        } catch (error) {
+            console.error(`[ERROR] Failed to remove client from room: ${error}`);
+            this.clientCache.delete(clientId);
+            this.roomCache.delete(roomId);
+            try {
+                await storage.removeClientFromRoom(clientId, roomId);
+            } catch (cleanupError) {
+                console.error(`[ERROR] Failed cleanup: ${cleanupError}`);
+            }
+            throw error;
+        }
+    }
+
+    async removeClient(clientId: string): Promise<void> {
+        const client = await this.getClient(clientId);
+        if (!client) return;
+        
+        const roomId = client.room_id;
+        const operations: Promise<any>[] = [];
+        
+        if (roomId) operations.push(this.removeClientFromRoom(clientId, roomId));
+        operations.push(storage.deleteClient(clientId));
+        
+        this.clientCache.delete(clientId); 
+        await Promise.all(operations);
+    }
+
+
+    async setPrivateMessagesAsRead(clientId: string): Promise<void> {
+        const messages = await storage.getClientPrivateMessages(clientId, 100);
+        const updates = messages
+            .filter(message => message.to_client === clientId && !message.read)
+            .map(message => storage.setPrivateMessageAsRead(message.id));
+        
+        await Promise.all(updates);
     }
 
     async addPrivateMessage(
@@ -130,71 +286,13 @@ export class DataManager {
         return messageId;
     }
 
-    async updateClientLastSeen(clientId: string): Promise<void> {
-        const client = await storage.getClient(clientId);
-        if (client) {
-            client.last_seen = getCurrentISOString();
-            await storage.setClient(clientId, client);
-        }
-    }
-
-    async removeClientFromRoom(clientId: string, roomId: string): Promise<void> {
-        try {
-            const [room, client] = await Promise.all([
-                storage.getRoom(roomId),
-                storage.getClient(clientId)
-            ]);
-            if (room && room.clients[clientId]) {
-                delete room.clients[clientId];
-                room.last_activity = getCurrentISOString();
-                await storage.setRoom(roomId, room);
-            }
-            if (client && client.room_id === roomId) {
-                client.room_id = null;
-                await storage.setClient(clientId, client);
-            }
-            await storage.removeClientFromRoom(clientId, roomId);
-        } catch (error) {
-            console.error(`[ERROR] Failed to remove client from room: ${error}`);
-            try {
-                await storage.removeClientFromRoom(clientId, roomId);
-            } catch (cleanupError) {
-                console.error(`[ERROR] Failed cleanup: ${cleanupError}`);
-            }
-            throw error;
-        }
-    }
-
-    async removeClient(clientId: string): Promise<void> {
-        const client = await storage.getClient(clientId);
-        if (!client) return;
-        const roomId = client.room_id;
-        if (roomId) await this.removeClientFromRoom(clientId, roomId);
-        await storage.deleteClient(clientId);
-    }
-
-    async setPrivateMessagesAsRead(clientId: string): Promise<void> {
-        const messages = await storage.getClientPrivateMessages(clientId, 100);
-        for (const message of messages) {
-            if (message.to_client === clientId && !message.read) await storage.setPrivateMessageAsRead(message.id);
-        }
-    }
-
-    async getClient(clientId: string): Promise<Client | null> {
-        return storage.getClient(clientId);
-    }
-
-    async getRoom(roomId: string): Promise<Room | null> {
-        return storage.getRoom(roomId);
-    }
 
     async getRoomClients(roomId: string): Promise<string[]> {
         return storage.getRoomClients(roomId);
     }
 
     async getUserPrivateMessages(userId: string, limit: number = 50): Promise<PrivateMessage[]> {
-        const messages = await storage.getClientPrivateMessages(userId, limit);
-        return messages;
+        return storage.getClientPrivateMessages(userId, limit);
     }
 
     async getClients(): Promise<{ [clientId: string]: Client }> {
@@ -217,7 +315,7 @@ export class DataManager {
     }
 
     async getRoomInfo(roomId: string): Promise<{ clientCount: number; messageCount: number } | null> {
-        const room = await storage.getRoom(roomId);
+        const room = await this.getRoom(roomId);
         if (!room) return null;
         const clientIds = await storage.getRoomClients(roomId);
         return {
@@ -227,7 +325,7 @@ export class DataManager {
     }
 
     async isClientInRoom(clientId: string, roomId: string): Promise<boolean> {
-        const client = await storage.getClient(clientId);
+        const client = await this.getClient(clientId);
         return client?.room_id === roomId;
     }
 

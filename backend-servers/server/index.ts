@@ -75,10 +75,19 @@ export const websocket: WebSocketHandler<WebSocketData> = {
     },
     close(ws, code, reason) {
         printDebug(`[WS] Connection closed: code=${code}, reason=${reason}, clientId=${ws.data.clientId}`, DebugLevel.LOG);
-        if(ws.data.pingInterval) clearInterval(ws.data.pingInterval);
+        
+        
+        if(ws.data.pingInterval) {
+            clearInterval(ws.data.pingInterval);
+            ws.data.pingInterval = null; 
+        }
+        
         const clientId = ws.data.clientId;
-        if(clientId) dataManager.setClientOnline(clientId, false);
-    },
+        if(clientId) {
+            dataManager.setClientOnline(clientId, false);
+            wsClientMap.delete(clientId); 
+        }
+},
 };
 
 const server: Server = Bun.serve({
