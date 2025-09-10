@@ -11,6 +11,8 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting");
   const [messages, setMessages] = useState<SocketMessage[]>([]);
   const queue = useRef<any[]>([]);
+  const pingIntervalRef = useRef<number | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
 
   const handleMessage = useCallback((event: MessageEvent) => {
     let data;
@@ -27,7 +29,24 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     setMessages(prev => [...prev, data]);
   }, []);
 
-  useEffect(() => {
+  const cleanup = useCallback(() => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, []);
+
+  const createConnection = useCallback(() => {
+    cleanup();
+    
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
@@ -43,9 +62,12 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     ws.onclose = () => setStatus("closed");
     ws.onerror = () => setStatus("error");
     ws.onmessage = handleMessage;
+  }, [handleMessage, cleanup]);
 
-    return () => { ws.close(); };
-  }, [handleMessage]);
+  useEffect(() => {
+    createConnection();
+    return cleanup;
+  }, [createConnection, cleanup]);
 
   const sendMessage = useCallback((msg: any) => {
     if(wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(msg));
@@ -55,44 +77,38 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   useEffect(() => {
     if(!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    const pingInterval = setInterval(() => {
+    pingIntervalRef.current = setInterval(() => {
       if(wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
       }
     }, 20000);
 
-    return () => clearInterval(pingInterval);
+    return () => {
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+    };
   }, [status]);
 
-  // automatic reconnection
   useEffect(() => {
     if (status === "closed" || status === "error") {
       console.log("[WS] Connection lost, attempting to reconnect in 3 seconds...");
       
-      const reconnectTimer = setTimeout(() => {
+      reconnectTimerRef.current = setTimeout(() => {
         console.log("[WS] Attempting to reconnect...");
         setStatus("connecting");
-        
-        const ws = new WebSocket(WS_URL);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          console.log("[WS] Reconnected successfully!");
-          setStatus("open");
-          queue.current.forEach(msg => ws.send(JSON.stringify(msg)));
-          queue.current = [];
-          try{ ws.send(JSON.stringify({ command: 'subscribe', topic: 'global' })); }
-          catch(e){ console.error("Failed to subscribe to global topic", e); }
-        };
-
-        ws.onclose = () => setStatus("closed");
-        ws.onerror = () => setStatus("error");
-        ws.onmessage = handleMessage;
+        createConnection();
       }, 3000);
-      
-      return () => clearTimeout(reconnectTimer);
+
+      return () => {
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+      };
     }
-  }, [status, handleMessage]);
+  }, [status, createConnection]);
 
   return (
     <SocketContext.Provider value={{ status, messages, sendMessage }}>
