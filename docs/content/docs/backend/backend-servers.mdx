@@ -1,0 +1,210 @@
+---
+title: Backend Server
+description: "[Bun](https://bun.com/) + [TypeScript](https://www.typescriptlang.org/) backend server with WebSocket support, [Redis](https://redis.io/) integration, and cryptographic authentication."
+---
+
+## Core Components
+
+### DataManager (`dataManager.ts`)
+Handles all data operations with automatic cleanup and caching:
+- **TTL Management**: Automatic expiration of clients (35s), rooms (2h), and messages (24h)
+- **Cleanup Operations**: Periodic cleanup of expired data every 60 seconds
+- **Room Management**: Client-to-room associations and message persistence
+- **Private Messaging**: Direct client-to-client communication
+
+### CommandHandler (`commandHandler.ts`)
+Processes WebSocket commands with authentication:
+- **Authentication Flow**: RSA signature verification for all commands
+- **Room Operations**: Create, join, leave rooms with real-time notifications
+- **Message Handling**: Room messages and private messages with file support
+- **Session Security**: WebSocket session binding to prevent hijacking
+
+### Storage Layer (`storage.ts`)
+Dual-mode storage system (Redis + Local):
+- **Redis Integration**: Distributed storage with connection fallback
+- **Local Storage**: In-memory maps for offline operation
+- **Caching Layer**: 30-second TTL cache with LRU eviction
+- **Batch Operations**: Optimized bulk operations for performance
+
+## Configuration
+
+```typescript
+export const CONFIG = {
+    CLIENT_TTL: 35,        // Client session timeout (seconds)
+    ROOM_TTL: 7200,        // Room inactivity timeout (2 hours)
+    MESSAGE_TTL: 86400,    // Message retention (24 hours)
+    DEBUG: process.env.DEBUG || false,
+
+    SERVER: {
+        PORT: process.env.PORT || 5000,
+        HOST: process.env.HOST || '0.0.0.0'
+    },
+
+    REDIS: {
+        HOST: process.env.REDIS_HOST || 'redis',
+        PORT: process.env.REDIS_PORT || 6379,
+        PASSWORD: process.env.REDIS_PASSWORD || 'password',
+        DB: process.env.REDIS_DB || 0
+    }
+};
+```
+
+## Data Models
+
+### Client Model
+```typescript
+interface Client {
+    id: string;                 // Unique username
+    public_key: string;         // RSA public key (PEM format)
+    ecdh_key?: string;          // Optional ECDH key
+    room_id: string | null;     // Current room assignment
+    last_seen: string;          // ISO timestamp
+    created_at: string;         // Registration timestamp
+    online?: boolean;           // Online status
+}
+```
+
+### Room Model
+```typescript
+interface Room {
+    clients: { [clientId: string]: ClientInRoom };
+    messages: Message[];
+    created_at: string;
+    last_activity: string;
+}
+```
+
+### Message Model
+```typescript
+interface Message {
+    from_client: string;        // Sender identifier
+    text: string;               // Message content
+    signature?: string;         // Cryptographic signature
+    timestamp: string;          // ISO timestamp
+    public_key: string;         // Sender's public key
+    verified?: boolean;         // Signature verification status
+    file?: boolean;             // File attachment flag
+    filename?: string;          // File name
+    mimetype?: string;          // MIME type
+    content?: string;           // Base64 file content
+}
+```
+
+## Redis Integration
+
+### Data Storage Patterns
+
+#### Key Naming Convention
+```
+client:{client_id}              # Client data
+room:{room_id}                  # Room data
+pm:{message_id}                 # Private messages
+room_clients:{room_id}          # Room membership index
+user_messages:{user_id}         # User message index
+```
+
+#### Caching Strategy
+- **Cache TTL**: 30 seconds for frequently accessed data
+- **Cache Size**: Maximum 1000 entries with LRU eviction
+- **Write-Through**: Updates both cache and persistent storage
+- **Fallback Mode**: Automatic local storage when Redis unavailable
+
+## WebSocket Implementation
+
+### Connection Lifecycle
+```typescript
+export const websocket: WebSocketHandler<WebSocketData> = {
+    open(ws) {
+        printDebug(`[WS] Connection opened.`);
+        ws.subscribe("global");
+    },
+    message(ws, message) {
+        commandHandler.handle(ws, message, wsClientMap);
+    },
+    ping(ws, data) {
+        ws.pong(data);
+    },
+    close(ws, code, reason) {
+        const clientId = ws.data.clientId;
+        if (clientId) wsClientMap.delete(clientId);
+    },
+};
+```
+
+### Session Management
+- **WebSocket Binding**: Each WebSocket bound to authenticated client
+- **Session Validation**: Continuous validation of client-session binding
+- **Automatic Cleanup**: Expired sessions automatically removed
+- **Connection Tracking**: Real-time tracking of active connections
+
+## Performance Features
+
+### Caching Strategy
+- **Client Cache**: 30-second TTL with 1000-entry limit
+- **Room Cache**: Frequently accessed room data cached
+- **Redis Pipeline**: Batch operations for improved performance
+- **Connection Pooling**: Persistent connections to Redis
+
+### Memory Management
+- **Cleanup Intervals**: 60-second cleanup cycles
+- **TTL Enforcement**: Automatic expiration of old data
+- **Cache Eviction**: LRU eviction when cache limits reached
+- **Resource Monitoring**: Continuous monitoring of memory usage
+
+## Error Handling
+
+### Connection Management
+- **Automatic Fallback**: Redis → Local storage fallback
+- **Graceful Degradation**: System continues operating without Redis
+- **Connection Recovery**: Automatic reconnection attempts
+- **Error Logging**: Comprehensive error tracking and reporting
+
+### Data Integrity
+- **Transaction Safety**: Redis transactions for data consistency
+- **Validation Layers**: Input validation at multiple levels
+- **Cleanup Procedures**: Automatic cleanup of orphaned data
+- **State Synchronization**: Consistent state across distributed components
+
+## Docker Configuration
+
+### Dockerfile
+```dockerfile
+FROM oven/bun:alpine
+WORKDIR /app
+RUN apk update && apk add --no-cache curl
+
+COPY package.json bun.lock ./
+RUN bun install
+
+COPY . .
+
+CMD ["bun", "run", "index.ts"]
+```
+
+### Dependencies
+```json
+{
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "ioredis": "^5.7.0",
+    "redis": "^5.8.1",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.3"
+  }
+}
+```
+
+## Development Commands
+
+```bash
+# Local development
+bun install
+bun run index.ts
+
+# Docker development
+docker compose up server --build
+docker compose logs -f server
+
+# Debug mode
+DEBUG=TRUE bun run index.ts
+```

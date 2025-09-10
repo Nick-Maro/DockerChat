@@ -1,0 +1,56 @@
+---
+title: Security & Cryptography
+description: Comprehensive security implementation with RSA/ECDH authentication, session management, and message signing.
+---
+
+## Authentication System
+
+### RSA Authentication (`auth.ts`)
+- **Key Generation**: 2048-bit RSA key pairs for client authentication
+- **Message Signing**: SHA-256 based signatures for all commands
+- **Nonce Protection**: Prevents replay attacks with time-window validation
+- **Time Skew Tolerance**: 30-second window for timestamp synchronization
+
+### ECDH Key Exchange
+- **Elliptic Curve**: Additional layer for enhanced security
+- **Key Validation**: Cryptographic validation of ECDH public keys
+- **Session Binding**: Links ECDH keys to specific WebSocket sessions
+
+## Cryptographic Implementation
+
+### Key Generation
+```typescript
+static generateKeyPair(): { publicKey: string; privateKey: string } {
+    return crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    });
+}
+```
+
+### Message Signing
+```typescript
+static signData(data: string, privateKeyPem: string): string {
+    const sign = crypto.createSign('SHA256');
+    sign.update(data, 'utf8');
+    sign.end();
+    return sign.sign(privateKeyPem, 'base64');
+}
+
+static verifySignature(data: string, signature: string, publicKeyPem: string): boolean {
+    const verify = crypto.createVerify('SHA256');
+    verify.update(data, 'utf8');
+    verify.end();
+    return verify.verify(publicKeyPem, signature, 'base64');
+}
+```
+
+### Nonce-based Replay Protection
+```typescript
+static validateNonce(nonce: string, timestamp: number): { valid: boolean; error?: string } {
+    const now = Date.now();
+    this.cleanOldNonces();
+
+    if (Math.abs(now - timestamp) > this.MAX_TIME_SKEW) {
+        return { valid: false, error: 'Request timestamp outside acceptable window' };

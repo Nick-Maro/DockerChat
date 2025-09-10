@@ -1,0 +1,286 @@
+---
+title: Programmable Firewall
+description: "[Go](https://go.dev/)-based traffic filtering engine with DDoS protection, rate limiting, and rule-based access control."
+---
+## Core Architecture
+
+### Main Firewall Engine (`firewall.go`)
+
+**Connection Handling**
+- Multi-threaded connection processing
+- HTTP request parsing and port extraction
+- Graceful connection forwarding to reverse proxy
+- Resource cleanup and connection tracking
+
+**Rate Limiting System**
+```go
+type Firewall struct {
+    connectionAttempts map[string][]time.Time  // Per-minute tracking
+    hourlyAttempts     map[string][]time.Time  // Per-hour tracking
+    autoBlockedIPs     map[string]time.Time    // Auto-blocked IPs with expiry
+    activeConnsByIP    map[string]int          // Active connections per IP
+    synFloodTracker    map[string][]time.Time  // SYN flood detection
+}
+```
+
+## Advanced Protection Features
+
+### SYN Flood Protection
+- Tracks connection attempts per IP in time windows
+- Configurable thresholds (10 connections per 10 seconds)
+- Active connection limiting (5 concurrent per IP)
+- Automatic IP blocking for flood patterns
+
+### DDoS Mitigation
+```go
+const (
+    MaxConnectionsPerIP = 5
+    SynFloodWindow      = 10 * time.Second
+    MaxSynPerWindow     = 10
+    MaxTrackedIPs       = 10000
+    MaxConcurrentConns  = 100
+    ConnectionTimeout   = 10 * time.Second
+)
+```
+
+### Rule-based Filtering
+- JSON configuration with hot-reload
+- CIDR subnet support for IP ranges
+- Port-based access control
+- Whitelist and blacklist management
+- Automatic rule persistence
+
+## Firewall Rules Configuration
+
+### Default Rules Structure
+```json
+{
+    "blocked_ips": ["192.168.1.100", "10.0.0.0/8"],
+    "whitelist": ["127.0.0.1", "::1", "192.168.1.0/24"],
+    "allowed_ports": [80, 443, 8080, 5000, 5001, 6379],
+    "max_attempts_per_minute": 100,
+    "max_attempts_per_hour": 200,
+    "auto_block_enabled": true,
+    "auto_block_duration_hours": 24
+}
+```
+
+### Rule Types
+
+**IP Blocking**
+- Individual IP addresses: `"192.168.1.100"`
+- CIDR networks: `"10.0.0.0/8"`
+- IPv6 support: `"2001:db8::/32"`
+
+**Port Control**
+- Allowed ports list: `[80, 443, 8080]`
+- Default deny for unlisted ports
+- Dynamic port detection from HTTP Host header
+
+**Rate Limiting**
+- Per-minute limits: Connection frequency control
+- Per-hour limits: DDoS protection thresholds
+- Auto-blocking: Automatic IP blocking for persistent violators
+
+## Logging System (`logger.go`)
+
+### Multi-level Logging
+```go
+type LogLevel int
+const (
+    DEBUG LogLevel = iota
+    INFO
+    WARNING
+    ERROR
+    SECURITY
+)
+```
+
+### Log Categories
+- `STARTUP`: System initialization and configuration
+- `CONNECTION`: Connection tracking and lifecycle
+- `BLOCKED`: Security violations and blocks
+- `ALLOWED`: Permitted connections
+- `RATE_LIMIT`: Rate limiting violations
+- `DDOS`: DDoS protection events
+- `PROXY`: Reverse proxy forwarding
+- `RULES`: Rule loading and validation
+
+### Log Output Formats
+```
+[2025-08-31 15:30:45.123] [SECURITY] [BLOCKED] IP: 192.168.1.100 - Reason: blocked by configuration
+[2025-08-31 15:30:46.456] [INFO] [ALLOWED] IP: 127.0.0.1 -> Destination: reverse-proxy:8080
+[2025-08-31 15:30:47.789] [WARNING] [DDOS] IP: 10.0.0.1 - Hourly attempts: 150/100 - Action: WARNING_HIGH_TRAFFIC
+```
+
+## Rule Parser (`rules_parser.go`)
+
+### CIDR Support
+```go
+type IPMatcher struct {
+    networks []*net.IPNet
+}
+
+func (m *IPMatcher) Contains(ipStr string) bool {
+    ip := net.ParseIP(ipStr)
+    if ip == nil {
+        return false
+    }
+
+    for _, network := range m.networks {
+        if network.Contains(ip) {
+            return true
+        }
+    }
+    return false
+}
+```
+
+### Optimized Matching
+- Pre-parsed CIDR networks for fast lookup
+- IPv4 and IPv6 support
+- Network range validation
+- Efficient memory usage for large rule sets
+
+## Performance Features
+
+### Memory Management
+- Limited IP tracking (10,000 maximum)
+- Automatic cleanup of old tracking data
+- LRU eviction for memory efficiency
+- Force cleanup when approaching limits
+
+### Connection Optimization
+- Connection pooling and reuse
+- TCP_DEFER_ACCEPT for SYN flood mitigation
+- SO_REUSEADDR for fast restart
+- Graceful shutdown with connection draining
+
+## Monitoring Integration
+
+### Health Check Endpoint
+```bash
+curl http://localhost:5001/health
+```
+
+### Performance Metrics
+- Connection rate tracking
+- Memory usage monitoring
+- Rule reload statistics
+- DDoS protection effectiveness
+
+### Log Analysis
+```go
+func (fw *Firewall) logDDoSStats() {
+    activeAutoBlocks := 0
+    expiredBlocks := 0
+    now := time.Now()
+
+    for _, blockExpiry := range fw.autoBlockedIPs {
+        if now.Before(blockExpiry) {
+            activeAutoBlocks++
+        } else {
+            expiredBlocks++
+        }
+    }
+
+    trackedIPs := len(fw.hourlyAttempts)
+    fw.logger.LogStats(trackedIPs, activeAutoBlocks, expiredBlocks)
+}
+```
+
+## Docker Configuration
+
+### Multi-stage Build
+```dockerfile
+FROM golang:1.21-alpine AS builder
+RUN apk add --no-cache git ca-certificates
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY src/ ./src/
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -a -installsuffix cgo \
+    -o firewall ./src/
+
+FROM alpine:3.18
+RUN apk add --no-cache wget ca-certificates tzdata curl iptables && \
+    mkdir -p /var/log/shared/firewall
+WORKDIR /app
+COPY --from=builder /app/firewall ./
+
+EXPOSE 5001
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:5001 || exit 1
+
+CMD ["./firewall"]
+```
+
+### System Integration
+```bash
+# iptables integration for enhanced protection
+iptables -N SYN_FLOOD 2>/dev/null || true
+iptables -F SYN_FLOOD 2>/dev/null || true
+iptables -A INPUT -p tcp --syn --dport 5001 -m conntrack --ctstate NEW -m recent --set --name SYNTRACK --rsource
+iptables -A INPUT -p tcp --syn --dport 5001 -m recent --update --seconds 60 --hitcount 6 --name SYNTRACK --rsource -j DROP
+```
+
+## Operation Modes
+
+### Development Mode
+```bash
+# Build and run locally
+go mod download
+go run src/*.go
+
+# Docker development
+docker compose up firewall --build
+docker compose logs -f firewall
+```
+
+### Production Mode
+- Optimized binary compilation
+- Resource limit enforcement
+- Enhanced logging and monitoring
+- Automatic restart on failure
+
+## Rule Management
+
+### Hot Reload
+- Rules file monitored every second
+- Zero-downtime rule updates
+- Validation before applying changes
+- Rollback on configuration errors
+
+### Auto-blocking
+```go
+func (fw *Firewall) addToBlockedList(ip string) {
+    fw.rules.BlockedIPs = append(fw.rules.BlockedIPs, ip)
+
+    data, err := json.MarshalIndent(fw.rules, "", "  ")
+    if err := os.WriteFile(fw.rulesFile, data, 0644); err != nil {
+        fw.logger.LogError("RULES", "Failed to save auto-blocked IP %s: %v", ip, err)
+        return
+    }
+
+    fw.parsedRules = ParseRules(fw.rules)
+    fw.logger.LogStartup("IP %s added to permanent block list", ip)
+}
+```
+
+## Security Implementation
+
+### Connection Validation
+1. **IP Whitelist Check**: Bypass all restrictions for trusted IPs
+2. **IP Blacklist Check**: Immediate block for known bad actors
+3. **Port Validation**: Ensure requested port is allowed
+4. **Rate Limiting**: Check per-minute and per-hour limits
+5. **SYN Flood Detection**: Monitor connection patterns
+6. **Resource Limits**: Enforce concurrent connection limits
+
+### Attack Mitigation
+- **Replay Protection**: Connection attempt tracking
+- **Resource Exhaustion**: Memory and connection limits
+- **Pattern Recognition**: Automated threat detection
+- **Adaptive Blocking**: Learning from attack patterns

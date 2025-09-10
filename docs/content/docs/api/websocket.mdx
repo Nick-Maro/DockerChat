@@ -1,0 +1,746 @@
+---
+title: API Reference
+description: Complete WebSocket protocol documentation with command reference and response formats.
+---
+
+## WebSocket Protocol
+
+### Connection
+```
+ws://api.localhost:5001
+```
+
+### Command Structure
+
+All commands follow this authenticated structure:
+
+```json
+{
+    "command": "command_name",
+    "client_id": "username",
+    "nonce": "random_hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature",
+    // ... additional command-specific data
+}
+```
+
+### Response Format
+
+```json
+{
+    "command": "original_command",
+    "message": "Success/error message",
+    "status": "operation_status",
+    "client_id": "authenticated_client",
+    "debug": {
+        "server_instance": "server_identifier",
+        "redis_available": true,
+        "command": "executed_command"
+    }
+}
+```
+
+## Authentication Commands
+
+### Upload Public Key
+Register client with RSA public key.
+
+**Request:**
+```json
+{
+    "command": "upload_public_key",
+    "username": "client_username",
+    "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+}
+```
+
+**Response:**
+```json
+{
+    "command": "upload_public_key",
+    "message": "Client registered with success!",
+    "client_id": "client_username",
+    "status": "registered",
+    "ttl_info": {
+        "client_ttl_hours": 0.01,
+        "message_ttl_hours": 24
+    }
+}
+```
+
+### Upload ECDH Key
+Add ECDH key for enhanced security (optional).
+
+**Request:**
+```json
+{
+    "command": "upload_ecdh_key",
+    "username": "client_username",
+    "ecdh_key": "-----BEGIN EC PUBLIC KEY-----\n...",
+    "client_id": "client_username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "upload_ecdh_key",
+    "message": "ECDH key uploaded successfully!",
+    "client_id": "client_username",
+    "status": "ecdh_updated"
+}
+```
+
+## Room Management Commands
+
+### Create Room
+Create a new chat room.
+
+**Request:**
+```json
+{
+    "command": "create_room:room_name",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "create_room:room_name",
+    "message": "Created room 'room_name'",
+    "room_name": "room_name",
+    "clients_in_room": 1
+}
+```
+
+### Join Room
+Join an existing chat room.
+
+**Request:**
+```json
+{
+    "command": "join_room:room_name",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "join_room:room_name",
+    "message": "Joined room 'room_name'",
+    "room_name": "room_name",
+    "clients_in_room": 3
+}
+```
+
+**Broadcast Event (to other room members):**
+```json
+{
+    "event": "user_joined",
+    "room_name": "room_name",
+    "client_id": "username",
+    "clients_in_room": 3
+}
+```
+
+### Leave Room
+Leave current room.
+
+**Request:**
+```json
+{
+    "command": "leave_room",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "leave_room",
+    "message": "Left the room 'room_name'"
+}
+```
+
+## Messaging Commands
+
+### Send Room Message
+Send message to current room.
+
+**Request:**
+```json
+{
+    "command": "send_message:Hello everyone!",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "send_message:Hello everyone!",
+    "message": "Message sent in room 'room_name'",
+    "room_name": "room_name",
+    "message_text": "Hello everyone!"
+}
+```
+
+**Broadcast Event (to room members):**
+```json
+{
+    "event": "room_message_received",
+    "from": "username",
+    "timestamp": "2025-08-31T15:30:45.123Z",
+    "text": "Hello everyone!"
+}
+```
+
+### Send Private Message
+Send direct message to specific client.
+
+**Request:**
+```json
+{
+    "command": "send_private:target_user:Private message",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "send_private:target_user:Private message",
+    "message": "Private message sent to target_user",
+    "message_id": "uuid-message-id",
+    "to_client": "target_user"
+}
+```
+
+**Broadcast Event (to recipient):**
+```json
+{
+    "event": "private_message_received",
+    "from_client": "username",
+    "to_client": "target_user",
+    "text": "Private message",
+    "timestamp": "2025-08-31T15:30:45.123Z",
+    "verified": true,
+    "message_id": "uuid-message-id"
+}
+```
+
+## File Upload Support
+
+### Send File Message
+Upload file to room or private message.
+
+**Request:**
+```json
+{
+    "command": "send_message:document.pdf",
+    "file": true,
+    "filename": "document.pdf",
+    "mimetype": "application/pdf",
+    "content": "base64_encoded_file_content",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "send_message:document.pdf",
+    "message": "Message sent in room 'room_name'",
+    "room_name": "room_name",
+    "message_text": "document.pdf",
+    "file": true
+}
+```
+
+**Broadcast Event:**
+```json
+{
+    "event": "room_message_received",
+    "from": "username",
+    "timestamp": "2025-08-31T15:30:45.123Z",
+    "text": "document.pdf",
+    "file": true,
+    "filename": "document.pdf",
+    "mimetype": "application/pdf",
+    "content": "base64_encoded_file_content"
+}
+```
+
+## Information Commands
+
+### Get Messages
+Retrieve room message history.
+
+**Request:**
+```json
+{
+    "command": "get_messages",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "get_messages",
+    "message": "Messages for room 'room_name'",
+    "room_name": "room_name",
+    "messages": [
+        {
+            "from_client": "user1",
+            "text": "Hello!",
+            "timestamp": "2025-08-31T15:29:00.000Z",
+            "public_key": "-----BEGIN PUBLIC KEY-----\n...",
+            "verified": true,
+            "file": false
+        }
+    ],
+    "total_messages": 1
+}
+```
+
+### Get Private Messages
+Retrieve private message history.
+
+**Request:**
+```json
+{
+    "command": "get_private_messages",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "get_private_messages",
+    "message": "Retrieved private messages",
+    "private_messages": [
+        {
+            "id": "message-uuid",
+            "from_client": "sender",
+            "to_client": "username",
+            "text": "Private message",
+            "timestamp": "2025-08-31T15:28:00.000Z",
+            "read": false,
+            "direction": "received",
+            "verified": true,
+            "file": false
+        }
+    ],
+    "total_messages": 1
+}
+```
+
+### List Clients
+Get all registered clients.
+
+**Request:**
+```json
+{
+    "command": "list_clients",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "list_clients",
+    "message": "List of available clients",
+    "clients": [
+        {
+            "client_id": "user1",
+            "room_id": "general",
+            "last_seen": "2025-08-31T15:30:00.000Z",
+            "online": true
+        },
+        {
+            "client_id": "user2",
+            "room_id": null,
+            "last_seen": "2025-08-31T15:25:00.000Z",
+            "online": false
+        }
+    ],
+    "total_clients": 2
+}
+```
+
+### List Rooms
+Get all available rooms.
+
+**Request:**
+```json
+{
+    "command": "list_rooms",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "list_rooms",
+    "message": "List of available rooms",
+    "rooms": [
+        {
+            "name": "general",
+            "clients": 3,
+            "messages": 12,
+            "created_at": "2025-08-31T14:00:00.000Z",
+            "last_activity": "2025-08-31T15:30:00.000Z"
+        }
+    ]
+}
+```
+
+## Utility Commands
+
+### Heartbeat
+Keep session alive.
+
+**Request:**
+```json
+{
+    "command": "heartbeat",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "heartbeat",
+    "message": "Heartbeat received",
+    "client_status": "alive"
+}
+```
+
+### Get ECDH Key
+Retrieve another client's ECDH key for secure communication.
+
+**Request:**
+```json
+{
+    "command": "get_ecdh_key:target_username",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "get_ecdh_key:target_username",
+    "message": "ECDH key retrieved for user 'target_username'",
+    "target_user": "target_username",
+    "ecdh_key": "-----BEGIN EC PUBLIC KEY-----\n...",
+    "user_online": true,
+    "same_room": false
+}
+```
+
+### Disconnect
+Clean disconnect from server.
+
+**Request:**
+```json
+{
+    "command": "disconnect",
+    "client_id": "username",
+    "nonce": "hex_string",
+    "timestamp": 1693123456789,
+    "signature": "base64_signature"
+}
+```
+
+**Response:**
+```json
+{
+    "command": "disconnect",
+    "message": "Client username disconnected and removed",
+    "status": "disconnected"
+}
+```
+
+## Real-time Events
+
+### System Events
+Events broadcast to all connected clients:
+
+```json
+{
+    "event": "client_registered",
+    "client_id": "new_username",
+    "timestamp": "2025-08-31T15:30:45.123Z"
+}
+
+{
+    "event": "client_online",
+    "client_id": "username",
+    "timestamp": "2025-08-31T15:30:45.123Z"
+}
+
+{
+    "event": "client_offline",
+    "client_id": "username",
+    "timestamp": "2025-08-31T15:30:45.123Z"
+}
+```
+
+### Room Events
+Events sent to room members:
+
+```json
+{
+    "event": "user_joined",
+    "room_name": "general",
+    "client_id": "new_member",
+    "clients_in_room": 4
+}
+
+{
+    "event": "user_left",
+    "room_name": "general",
+    "client_id": "former_member",
+    "clients_in_rooms": 3
+}
+
+{
+    "event": "user_disconnect",
+    "room_name": "general",
+    "client_id": "disconnected_user",
+    "clients_in_rooms": 2
+}
+```
+
+## Error Responses
+
+### Authentication Errors
+```json
+{
+    "command": "failed_command",
+    "error": "Authentication failed: Invalid signature"
+}
+
+{
+    "command": "failed_command",
+    "error": "Client not found or expired"
+}
+
+{
+    "command": "failed_command",
+    "error": "WebSocket not bound to this client. Session mismatch."
+}
+```
+
+### Validation Errors
+```json
+{
+    "command": "create_room:invalid-name!",
+    "error": "Room name can only contain letters, numbers, underscores, and hyphens"
+}
+
+{
+    "command": "send_message:",
+    "error": "Invalid message length"
+}
+
+{
+    "command": "join_room:nonexistent",
+    "error": "Invalid room name"
+}
+```
+
+### System Errors
+```json
+{
+    "command": "any_command",
+    "error": "Invalid JSON"
+}
+
+{
+    "command": "missing_signature",
+    "error": "Missing required authentication fields"
+}
+```
+
+## HTTP Endpoints
+
+### Server Status
+Get comprehensive system metrics.
+
+**Request:**
+```http
+GET /status
+```
+
+**Response:**
+```json
+{
+    "server_instance": "Bun-uuid",
+    "redis_available": true,
+    "total_clients": 5,
+    "online_clients": 3,
+    "total_rooms": 2,
+    "total_private_messages": 15,
+    "ttl_config": {
+        "client_ttl_seconds": 35,
+        "room_ttl_seconds": 7200,
+        "message_ttl_seconds": 86400
+    },
+    "rooms": {
+        "general": {
+            "clients": 3,
+            "messages": 12,
+            "last_activity": "2025-08-31T15:30:00.000Z"
+        }
+    }
+}
+```
+
+## Dashboard API Endpoints
+
+### Health Check
+```http
+GET /health
+```
+
+**Response:**
+```json
+{
+    "status": "healthy",
+    "service": "dashboard",
+    "redis_available": true,
+    "redis_status": "connected"
+}
+```
+
+### Redis Export
+```http
+GET /redis/export
+```
+
+**Response:**
+```json
+{
+    "clients": {...},
+    "rooms": {...},
+    "private_messages": {...},
+    "user_messages": {...}
+}
+```
+
+### Redis Clear Operations
+```http
+POST /redis/clear
+Content-Type: application/x-www-form-urlencoded
+
+clear_type=all|clients|rooms|private_messages
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "All Redis data cleared successfully"
+}
+```
+
+## Client Command Reference
+
+### Terminal Client Commands
+```bash
+j <room_name>         # Join room
+s <message>           # Send message to room
+p <client_id> <msg>   # Send private message
+r                     # Read room messages
+pm                    # Read private messages
+l                     # List all rooms
+c                     # List all clients
+e                     # Leave current room
+h                     # Show help
+q                     # Quit program
+```
+
+### Python Client Implementation
+```python
+# Send authenticated command
+await send_command(websocket, "join_room:general", private_key)
+
+# Send message with signature
+message_bytes = "Hello World!".encode('utf-8')
+signature = sign_message(private_key, message_bytes)
+signature_b64 = base64.b64encode(signature).decode('utf-8')
+
+message_data = {
+    "command": "send_message:Hello World!",
+    "client_id": client_id,
+    "signature": signature_b64
+}
+await websocket.send(json.dumps(message_data))
+```
+
+## Rate Limits & Constraints
+
+### Message Constraints
+- **Message Length**: Maximum 1024 characters
+- **Room Name**: Maximum 50 characters, alphanumeric + underscore/hyphen only
+- **Username**: 3-16 characters, alphanumeric + underscore/hyphen only
+
+### Session Limits
+- **Client TTL**: 35 seconds (configurable)
+- **Room TTL**: 2 hours of inactivity
+- **Message TTL**: 24 hours retention
+- **Nonce TTL**: 5 minutes for replay protection
+
+### WebSocket Limits
+- **Idle Timeout**: 60 seconds
+- **Max Connections**: Limited by system resources
+- **Heartbeat Interval**: 30 minutes recommended

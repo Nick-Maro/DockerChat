@@ -1,0 +1,411 @@
+---
+title: Client documentation
+description: "[Preact](https://preactjs.com/) based real-time chat application client"
+---
+## Overview
+
+The DockerChat client is a modern real-time chat application built with **Preact** that connects to a WebSocket server for instant messaging. It features both public room conversations and private direct messaging with file sharing capabilities.
+
+## Tech Stack
+
+- **Framework**: Preact 10.26.9 with TypeScript
+- **Routing**: preact-iso 2.9.2
+- **Build Tool**: Vite 7.0.4
+- **Styling**: CSS Modules + Custom CSS Variables
+- **Containerization**: Docker multi-stage build with Node.js 20
+
+## Project Structure
+
+```
+client/
+├── src/
+│   ├── assets/icons/          # SVG icons (attach, send, settings, etc.)
+│   ├── components/            # React components
+│   │   ├── Header.tsx         # Navigation header
+│   │   ├── RoomList.tsx       # Public rooms display
+│   │   ├── chatWindow.tsx     # Main chat interface
+│   │   └── directMessages.tsx # Private message sidebar
+│   ├── css/                   # CSS modules
+│   │   ├── chatWindow.module.css
+│   │   ├── directMessages.module.css
+│   │   └── roomsList.module.css
+│   ├── pages/                 # Route components
+│   │   ├── Home/              # Main chat page
+│   │   └── _404.tsx           # Error page
+│   ├── shared/                # Context providers & utilities
+│   │   ├── authContext.tsx    # Authentication management
+│   │   ├── chatContext.tsx    # Chat state management
+│   │   ├── webSocketContext.tsx # WebSocket connection
+│   │   ├── unreadMessagesContext.tsx # Notification system
+│   │   ├── fileHelpers.tsx    # File upload utilities
+│   │   └── utils.ts           # Crypto & utility functions
+│   ├── config.ts              # WebSocket configuration
+│   ├── types.ts               # TypeScript definitions
+│   └── index.tsx              # App entry point
+├── Dockerfile                 # Multi-stage container build
+└── package.json
+```
+
+## Core Architecture
+
+### Provider Pattern
+
+The application uses a nested provider architecture for state management:
+
+```tsx
+<SocketProvider>
+  <ClientProvider>
+    <UnreadProvider>
+      <ChatProvider>
+        <App />
+      </ChatProvider>
+    </UnreadProvider>
+  </ClientProvider>
+</SocketProvider>
+```
+
+### Context Providers
+
+#### 1. SocketProvider (`webSocketContext.tsx`)
+Manages WebSocket connection and message handling:
+
+```typescript
+type SocketContextType = {
+  status: "connecting" | "open" | "closed" | "error";
+  messages: SocketMessage[];
+  sendMessage: (msg: any) => void;
+};
+```
+
+**Features:**
+- Automatic connection to `ws://api.localhost:5001`
+- Message queuing when connection is unavailable
+- Real-time message broadcasting
+- Connection status tracking
+
+#### 2. ClientProvider (`authContext.tsx`)
+Handles user authentication and identity:
+
+```typescript
+type ClientContextType = {
+  username: string | null;
+  loading: boolean;
+};
+```
+
+**Features:**
+- Username validation (3-16 chars, alphanumeric + `_-`)
+- RSA key pair generation for message signing
+- Automatic heartbeat every 30 seconds
+- localStorage persistence for user data
+
+#### 3. UnreadProvider (`unreadMessagesContext.tsx`)
+Manages unread message notifications:
+
+```typescript
+interface UnreadContextType {
+  unreadCounts: UnreadCount;
+  incrementUnread: (chatId: string) => void;
+  clearUnread: (chatId: string) => void;
+  getTotalUnread: () => number;
+  getUnreadCount: (chatId: string) => number;
+}
+```
+
+**Features:**
+- Per-chat unread counters
+- Visual badge system
+- Automatic clearing when viewing conversations
+- localStorage persistence per user
+
+#### 4. ChatProvider (`chatContext.tsx`)
+Core chat functionality and state:
+
+```typescript
+type ChatContextType = {
+  rooms: Room[];
+  currentRoom: Room | null;
+  messages: Message[];
+  privateMessages: Record<string, Message[]>;
+  clients: Client[];
+  currentClient: Client | null;
+  // ... methods for chat operations
+};
+```
+
+## Key Components
+
+### RoomList Component
+
+Displays available public chat rooms:
+
+- **Room Creation**: Click "+" button to create new rooms
+- **Room Selection**: Click room avatar to join/leave
+- **Visual Indicators**: Active room highlighting
+- **Room Info**: Tooltips show client count and message count
+
+```tsx
+// Room data structure
+type Room = {
+  name: string;
+  clients: number;
+  messages: number;
+  created_at: string;
+  last_activity: string;
+};
+```
+
+### DirectMessages Component
+
+Manages private messaging interface:
+
+- **User List**: Shows all connected clients
+- **Online Status**: Green badge for online users
+- **Unread Badges**: Red counters for new messages
+- **Last Seen**: Timestamps for user activity
+- **Smart Sorting**: Unread messages first, then by last activity
+
+### ChatWindow Component
+
+Main chat interface with dual functionality:
+
+**Room Mode:**
+- Displays room messages chronologically
+- File drag-and-drop support
+- Message composer for text input
+- Attach button for file selection
+
+**Private Mode:**
+- One-on-one conversations
+- Same file sharing capabilities
+- Separate message history per user
+
+**Features:**
+- **Auto-scroll**: Automatically scrolls to new messages
+- **File Validation**: 10MB limit, type checking
+- **Drag & Drop**: Visual overlay for file uploads
+- **Message Rendering**: Different layouts for text/image/file messages
+
+## File Handling
+
+### Supported File Types
+```typescript
+const acceptedTypes = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf', 'text/plain',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
+```
+
+### Upload Process
+1. **File Selection**: Drag & drop or file picker
+2. **Validation**: Size (10MB) and type checking
+3. **Base64 Conversion**: Convert to Base64 for transmission
+4. **WebSocket Send**: Authenticated message with file data
+5. **UI Update**: Immediate local display
+
+### File Message Rendering
+- **Images**: Inline preview with download link
+- **Documents**: File icon with download link
+- **Error Handling**: Graceful fallback for missing content
+
+## Authentication Flow
+
+### Initial Registration
+1. **Username Prompt**: Validate and collect username
+2. **Key Generation**: Create RSA-2048 key pair
+3. **Public Key Upload**: Send to server for verification
+4. **Storage**: Save username and keys to localStorage
+
+### Message Authentication
+1. **Message Preparation**: Construct command with data
+2. **Signature Creation**: Sign with RSA private key
+3. **Nonce Addition**: Add timestamp and UUID for replay protection
+4. **Transmission**: Send authenticated message via WebSocket
+
+```typescript
+// Authentication message format
+{
+  command: string;
+  client_id: string;
+  nonce: string;
+  timestamp: number;
+  signature: string;
+  // ... additional data
+}
+```
+
+## Styling System
+
+### CSS Architecture
+- **CSS Modules**: Component-scoped styling
+- **CSS Variables**: Theme-based color system
+- **Flexbox/Grid**: Responsive layout system
+- **Dark Theme**: Modern dark UI design
+
+### Key CSS Variables
+```css
+:root {
+  --primary-color: #8775e9;
+  --border: rgba(255, 255, 255, 0.25);
+  --chat-sent-bubble-bg: #8775e9;
+  --chat-received-bubble-bg: #2d2d2d;
+  --message-composer-input-bg: #2d2d2d;
+}
+```
+
+### Responsive Breakpoints
+- **Desktop**: Sidebar (350px) + main chat area
+- **Mobile**: Full-width single view (< 768px)
+- **Navigation**: Hide/show sidebar on mobile
+
+## Development Workflow
+
+### Component Development
+1. Create component in appropriate directory
+2. Add corresponding CSS module
+3. Export from index file
+4. Import and use in parent components
+
+### State Management
+- Use appropriate context provider for state
+- Avoid prop drilling with context consumers
+- Handle loading and error states
+
+### Styling Guidelines
+- Use CSS modules for component styles
+- Follow BEM-like naming conventions
+- Utilize CSS variables for theming
+- Ensure mobile responsiveness
+
+## Build & Deployment
+
+### Development Build
+```bash
+npm run dev      # Start Vite dev server
+npm run build    # Production build
+npm run preview  # Preview production build
+```
+
+### Docker Deployment
+
+**Multi-stage Dockerfile:**
+```dockerfile
+# Stage 1: Build
+FROM node:20 AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve
+FROM node:20-alpine AS serve
+WORKDIR /app
+RUN npm install -g http-server
+COPY --from=build /app/dist/ /app
+EXPOSE 80
+CMD ["http-server", "-p", "80", "-c-1"]
+```
+
+**Build Commands:**
+```bash
+docker build -t chat-client .
+docker run -p 80:80 chat-client
+```
+
+## Configuration
+
+### WebSocket Settings
+Update `src/config.ts` for different environments:
+
+```typescript
+export const WS_CONFIG = {
+    HOST: "api.localhost",  // Change for production
+    PORT: 5001,            // WebSocket server port
+};
+```
+
+### Environment Variables
+The client adapts to different environments automatically. For production deployment, update the WebSocket host configuration to match your server setup.
+
+## Security Implementation
+
+### Client-Side Security
+- **RSA Digital Signatures**: All authenticated commands are signed
+- **Nonce Protection**: Prevents replay attacks
+- **File Validation**: Strict file type and size limits
+- **No Sensitive Storage**: Passwords/tokens not stored
+
+### Cryptographic Functions
+```typescript
+// Key generation
+generateKeyPair(): Promise<{ publicKeyPem: string, privateKey: CryptoKey }>
+
+// Message signing
+signMessage(privateKey: CryptoKey, message: string): Promise<string>
+
+// Authenticated messaging
+sendAuthenticatedMessage(sendMessage: Function, message: any): Promise<void>
+```
+
+## Performance Features
+
+### Message Optimization
+- **Duplicate Prevention**: Tracks processed messages
+- **Memory Management**: Limits processed message cache
+- **Efficient Updates**: Only processes new messages
+- **Auto-scroll**: Smooth scrolling to latest messages
+
+### File Handling
+- **Progressive Upload**: Base64 streaming for large files
+- **Type Detection**: MIME type validation
+- **Preview Generation**: Automatic image previews
+- **Error Recovery**: Graceful handling of upload failures
+
+## Browser Support
+
+### Required APIs
+- **WebSocket API**: Real-time communication
+- **Web Crypto API**: RSA key generation and signing
+- **File API**: File upload and drag & drop
+- **Local Storage**: User data persistence
+
+### Polyfills
+No polyfills required for modern browsers (2021+). For older browser support, consider adding:
+- WebSocket polyfill for IE
+- Crypto API polyfill for legacy browsers
+
+## Troubleshooting
+
+### Common Issues
+
+**Connection Problems:**
+```typescript
+// Check WebSocket status
+const { status } = useSocket();
+console.log('WebSocket status:', status);
+```
+
+**Authentication Issues:**
+```typescript
+// Reset user authentication
+localStorage.removeItem('username');
+localStorage.removeItem('public_key');
+localStorage.removeItem('private_key');
+// Refresh page
+```
+
+**File Upload Errors:**
+- Verify file size < 10MB
+- Check supported MIME types
+- Ensure stable internet connection
+- Check browser console for detailed errors
+
+### Debug Information
+The application logs important events to browser console:
+- WebSocket connection status
+- Authentication state changes
+- File upload progress
+- Message processing events
