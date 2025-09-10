@@ -514,8 +514,11 @@ export class CommandHandler {
 
                 printDebug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`, DebugLevel.LOG);
 
-                // to fix
-                this.server.publish("global", JSON.stringify(messageData));
+                // fixed?
+                const targetWs = wsClientMap.get(to_client_id);
+                    if (targetWs && targetWs.readyState === 1) {
+                        targetWs.send(JSON.stringify(messageData));
+                    }
 
                 response = {
                     ...response,
