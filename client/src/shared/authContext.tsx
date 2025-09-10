@@ -3,73 +3,64 @@ import { useContext, useState, useEffect } from 'preact/hooks';
 import { getOrCreatePublicKey, sendAuthenticatedMessage } from './utils';
 import { useSocket } from './webSocketContext';
 import { ClientContextType } from '../types';
+import UsernameModal from '../components/UsernameModal';
 
 const ClientContext = createContext<ClientContextType | null>(null);
-
 
 const validateUsername = (username: string): boolean => {
   const regex = /^[a-zA-Z0-9_-]{3,16}$/;
   return regex.test(username);
 };
 
-const promptForValidUsername = (): string | null => {
-  let username = null;
-  
-  while(!username){
-    const input = prompt("Enter a username (3-16 characters, letters/numbers/_-):")?.trim();
-    
-    if(input === null) return null;
-    if(!input){
-      alert("Username cannot be empty!");
-      continue;
-    }
-    if(!validateUsername(input)){
-      alert("Invalid username! It must be 3-16 characters long and contain only letters, numbers, underscores, and hyphens.");
-      continue;
-    }
-    
-    username = input;
-  }
-  
-  return username;
-};
-
 export const ClientProvider = ({ children }: { children: ComponentChildren }) => {
   const { status, messages, sendMessage } = useSocket();
   const [username, setUsername] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [usernamePromptReason, setUsernamePromptReason] = useState<string>('');
+
+  // open modal to ask for username
+  const promptForUsername = (reason: string = 'Enter a username') => {
+    setUsernamePromptReason(reason);
+    setShowUsernameModal(true);
+  };
+
+  // submit handler for username modal
+  const handleUsernameSubmit = async (newUsername: string) => {
+    setShowUsernameModal(false);
+    localStorage.setItem('username', newUsername);
+    const publicKey = await getOrCreatePublicKey();
+    sendMessage({ command: "upload_public_key", username: newUsername, public_key: publicKey });
+    setUsername(newUsername);
+  };
+
+
+  const handleUsernameCancel = () => {
+    setShowUsernameModal(false);
+    // If there's no username and the user cancels, stay in loading
+    if (!username) {
+      setLoading(true);
+    }
+  };
 
   useEffect(() => {
-    if(status !== "open") return; // wait until socket is open
+    if(status !== "open") return;
+    
     (async () => {
       const savedUsername = localStorage.getItem('username');
       const publicKey = await getOrCreatePublicKey();
       
       if(!savedUsername){
-        // if no username saved, ask the user
-        const uname = promptForValidUsername();
-        if(uname){
-          localStorage.setItem('username', uname);
-          sendMessage({ command: "upload_public_key", username: uname, public_key: publicKey });
-          setUsername(uname);
-        }
+        promptForUsername('Enter a username to get started');
         return;
       }
       
       if(!validateUsername(savedUsername)) {
-        // if saved username is invalid, reset it
         localStorage.removeItem('username');
-        alert("Saved username is no longer valid. Please enter a new one.");
-        const uname = promptForValidUsername();
-        if(uname){
-          localStorage.setItem('username', uname);
-          sendMessage({ command: "upload_public_key", username: uname, public_key: publicKey });
-          setUsername(uname);
-        }
+        promptForUsername('Saved username is no longer valid. Please enter a new one.');
         return;
       }
       
-      // username is good -> set it and send heartbeat
       setUsername(savedUsername);
       sendAuthenticatedMessage(sendMessage, { command: "heartbeat", client_id: savedUsername });
     })();
@@ -79,8 +70,8 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     if(!messages.length) return;
 
     const lastMessage = messages[messages.length - 1];
-    if(typeof lastMessage.command === 'string' && lastMessage.command.startsWith("upload_public_key") && lastMessage.client_id){
-      // server accepted public key -> save username
+    
+    if(typeof lastMessage.command === 'string' && lastMessage.command === "upload_public_key" && lastMessage.client_id){
       localStorage.setItem('username', lastMessage.client_id);
       setUsername(lastMessage.client_id);
       setLoading(false);
@@ -88,21 +79,11 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     }
 
     if(lastMessage.command === 'heartbeat'){
-      if(lastMessage.error === 'Unregistered client'){
-        // if server says "unknown user", reset username
+      if(lastMessage.error && lastMessage.error.includes('not found')){
         localStorage.removeItem('username');
-        
-        const uname = promptForValidUsername();
-        if(uname){
-          localStorage.setItem('username', uname);
-          (async () => {
-            const publicKey = await getOrCreatePublicKey();
-            sendMessage({ command: `upload_public_key:${uname}`, public_key: publicKey });
-          })();
-        }
+        promptForUsername('Session expired. Please re-enter your username.');
       }
       else{
-        // heartbeat ok -> keep username
         const id = localStorage.getItem('username');
         if(id) setUsername(id);
         setLoading(false);
@@ -112,9 +93,17 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
 
   useEffect(() => {
     if(!username || status !== 'open') return;
+    
     const heartbeatInterval = setInterval(async () => {
-        try{ await sendAuthenticatedMessage(sendMessage, { command: 'heartbeat',  client_id: username }); }
-        catch(error){ console.error('Heartbeat failed:', error); }
+      try{ 
+        await sendAuthenticatedMessage(sendMessage, { 
+          command: 'heartbeat', 
+          client_id: username 
+        }); 
+      }
+      catch(error){ 
+        console.error('Heartbeat failed:', error);
+      }
     }, 25000);
     
     return () => clearInterval(heartbeatInterval);
@@ -123,6 +112,12 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
   return (
     <ClientContext.Provider value={{ username, loading }}>
       {children}
+      <UsernameModal
+        isOpen={showUsernameModal}
+        title={usernamePromptReason}
+        onSubmit={handleUsernameSubmit}
+        onCancel={handleUsernameCancel}
+      />
     </ClientContext.Provider>
   );
 };
