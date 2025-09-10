@@ -118,8 +118,8 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                   last_activity: new Date().toISOString()
                 };
                 setRooms(prev => [...prev, newRoom]);
-                const room = rooms.find(r => r.name === msg.room_name) || newRoom;
-                setCurrentRoom(room);
+                setCurrentRoom(newRoom);
+                setCurrentClient(null);
                 setRoomMessages([]);
               }
             }
