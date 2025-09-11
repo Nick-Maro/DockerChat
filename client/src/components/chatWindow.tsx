@@ -1,120 +1,115 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState, useCallback, useMemo } from "preact/hooks";
+import { memo } from "preact/compat";
 import styles from '../css/chatWindow.module.css';
 import { useChat } from '../shared/chatContext';
 import { useClient } from '../shared/authContext';
 import { Message } from "../types";
 import { getMessageType } from '../shared/fileHelpers';
-
-// icons
 import attachWhite from '../assets/icons/attach-white.svg';
 import sendWhite from '../assets/icons/send-white.svg';
 
-
-export function ChatWindow() {
+export const ChatWindow = memo(() => {
   const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage, sendPrivateFile } = useChat();
   const { username } = useClient();
-  const [messageText, setMessageText] = useState('');
+  
+  const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
-  const activeMessages = currentClient ? (privateMessages[currentClient.client_id] || []) : messages;
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages]);
+  const activeMessages = useMemo(() => {
+    return currentClient ? (privateMessages[currentClient.client_id] || []) : messages;
+  }, [currentClient, privateMessages, messages]);
 
-  const stopEvent = (e: DragEvent) => {
+  useEffect(() => {
+    const timer = setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    return () => clearTimeout(timer);
+  }, [activeMessages.length]);
+
+  const stopEvent = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-  };
+  }, []);
 
-  const handleDragEnter = (e: DragEvent) => {
+  const handleDragEnter = useCallback((e: DragEvent) => {
     stopEvent(e);
-
-    const types = e.dataTransfer?.types;
-    const hasFiles = types && (types.includes?.("Files") || Array.from(types).includes("Files"));
+    const hasFiles = e.dataTransfer?.types?.includes?.("Files");
     if(!hasFiles) return;
-
     dragCounter.current++;
     setIsDragOver(true);
-  };
+  }, [stopEvent]);
 
-  const handleDragLeave = (e: DragEvent) => {
+  const handleDragLeave = useCallback((e: DragEvent) => {
     stopEvent(e);
     dragCounter.current--;
     if(dragCounter.current <= 0){
       dragCounter.current = 0;
       setIsDragOver(false);
     }
-  };
+  }, [stopEvent]);
 
-  const handleDragOver = (e: DragEvent) => {
+  const handleDragOver = useCallback((e: DragEvent) => {
     stopEvent(e);
     e.dataTransfer!.dropEffect = "copy";
-  };
+  }, [stopEvent]);
 
-  const handleDrop = (e: DragEvent) => {
+  const handleDrop = useCallback((e: DragEvent) => {
     stopEvent(e);
-
     dragCounter.current = 0;
     setIsDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if(file) handleFileUploadWrapper(file);
+  }, [stopEvent]);
 
-    const files = e.dataTransfer?.files;
-    if(files && files.length > 0){
-      const file = files[0];
-      handleFileUploadWrapper(file);
-    }
-  };
-
-  const handleFileUploadWrapper = async (file: File) => {
+  const handleFileUploadWrapper = useCallback(async (file: File) => {
     try{
       setUploadError(null);
-
-      if(file.size > 10 * 1024 * 1024){ // File size check (10MB)
+      if(file.size > 10 * 1024 * 1024){
         setUploadError("File size must be less than 10MB");
         return;
       }
-
       if(currentRoom) await sendFile(file);
       else if(currentClient) await sendPrivateFile(file);
       else setUploadError("No chat selected");
     }
     catch(error){
-      console.error("File upload failed:", error);
       setUploadError("File upload failed");
     }
-  };
+  }, [currentRoom, currentClient, sendFile, sendPrivateFile]);
 
-  const openFileDialog = () => fileInputRef.current?.click();
-  const handleFileChange = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if(file) handleFileUploadWrapper(file);
-    target.value = "";
-  };
-
-  const handleSendMessage = () => {
-    if(messageText.trim() && currentRoom){
-      sendMessage(messageText.trim());
-      setMessageText('');
+  const handleSendMessage = useCallback(() => {
+    const text = inputRef.current?.value?.trim();
+    if(!text) return;
+    
+    if(currentRoom){
+      sendMessage(text);
+    } else if(currentClient){
+      sendPrivateMessage(text);
     }
-    else if(messageText.trim() && currentClient){
-      sendPrivateMessage(messageText.trim());
-      setMessageText('');
-    }
-  };
+    
+    if(inputRef.current) inputRef.current.value = '';
+  }, [currentRoom, currentClient, sendMessage, sendPrivateMessage]);
 
-  const handleKeyPress = (event: KeyboardEvent) => {
+  const handleKeyPress = useCallback((event: KeyboardEvent) => {
     if(event.key === 'Enter' && !event.shiftKey){
       event.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
 
-  const renderMessage = (msg: Message) => {
+  const openFileDialog = useCallback(() => fileInputRef.current?.click(), []);
+  
+  const handleFileChange = useCallback((event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if(file) handleFileUploadWrapper(file);
+    (event.target as HTMLInputElement).value = "";
+  }, [handleFileUploadWrapper]);
+
+  const renderMessage = useCallback((msg: Message) => {
     if(msg.file && msg.filename && msg.content){
       const messageType = getMessageType(msg.mimetype);
-
       return messageType === "image" ? (
         <div className={styles.imageMessage}>
           <a href={msg.content} download={msg.filename} target="_blank" rel="noopener noreferrer">
@@ -131,7 +126,6 @@ export function ChatWindow() {
         </p>
       );
     } else if(msg.file && msg.filename && !msg.content) {
-      console.warn("File message without content:", msg);
       return (
         <p className={`${styles.fileMessage} flex`}>
           <span>❌</span>
@@ -139,9 +133,8 @@ export function ChatWindow() {
         </p>
       );
     }
-
     return <p className={styles.messageText}>{msg.text}</p>;
-  };
+  }, []);
 
   if(!currentRoom && !currentClient){
     return (
@@ -180,9 +173,7 @@ export function ChatWindow() {
                 <span className={styles.username}>
                   {msg.from_client === username ? 'You' : msg.from_client}
                 </span>
-
                 {renderMessage(msg)}
-
                 <span className={styles.time}>
                   {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -205,10 +196,9 @@ export function ChatWindow() {
           <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} accept="image/*,.pdf,.txt,.doc,.docx" />
         </div>
 
-        <input type="text"
+        <input ref={inputRef}
+          type="text"
           placeholder={currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`}
-          value={messageText} 
-          onChange={(e) => setMessageText((e.target as HTMLInputElement).value)} 
           onKeyPress={handleKeyPress} />
 
         <div className={[styles.icon, styles.send, 'center-flex'].join(' ')} onClick={handleSendMessage} title="Send message">
@@ -217,4 +207,4 @@ export function ChatWindow() {
       </div>
     </>
   );
-}
+});
