@@ -2,7 +2,7 @@ import type {RedisClientType} from 'redis';
 import {createClient} from 'redis';
 import {CONFIG} from './config';
 import type {Client, PrivateMessage, Room} from './types';
-import {printDebug} from './utils/utils.ts';
+import {printDebug, DebugLevel} from './utils/utils.ts';
 
 class Storage {
     private redis: RedisClientType | null = null;
@@ -28,6 +28,8 @@ class Storage {
                     socket: {
                         host: CONFIG.REDIS.HOST,
                         port: CONFIG.REDIS.PORT,
+                        reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+                        connectTimeout: 5000,
                     },
                     password: CONFIG.REDIS.PASSWORD,
                     database: CONFIG.REDIS.DB,
@@ -42,7 +44,7 @@ class Storage {
                 console.log('Connected to Redis');
             } catch (error) {
                 console.log('Redis unavailable, using local storage');
-                printDebug(`[DEBUG] Error during Redis connection: ${error}`);
+                printDebug(`[DEBUG] Error during Redis connection: ${error}`, DebugLevel.WARN);
                 this.redis = null;
             }
         } else {
@@ -59,8 +61,10 @@ class Storage {
     }
 
     async getClient(clientId: string): Promise<Client | null> {
+        this.cleanupCache(this.clientCache);
         const cached = this.clientCache.get(clientId);
         if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) return cached.data;
+        
         if (this.redis) {
             try {
                 const clientData = await this.redis.get(this.REDIS_KEYS.CLIENT(clientId));
@@ -100,12 +104,22 @@ class Storage {
 
     async setClient(clientId: string, client: Client): Promise<void> {
         this.cleanupCache(this.clientCache);
+        const normalized = this.normalizeClient(client);
+        
         if (this.redis) {
             try {
                 const pipeline = this.redis.multi();
-                const normalized = this.normalizeClient(client);
                 pipeline.set(this.REDIS_KEYS.CLIENT(clientId), JSON.stringify(normalized));
-                if (client.room_id) pipeline.sAdd(this.REDIS_KEYS.CLIENT_ROOM_INDEX(client.room_id), clientId);
+                
+                const existingClient = this.localClients.get(clientId);
+                if (existingClient?.room_id && existingClient.room_id !== client.room_id) {
+                    pipeline.sRem(this.REDIS_KEYS.CLIENT_ROOM_INDEX(existingClient.room_id), clientId);
+                }
+                
+                if (client.room_id) {
+                    pipeline.sAdd(this.REDIS_KEYS.CLIENT_ROOM_INDEX(client.room_id), clientId);
+                }
+                
                 await pipeline.exec();
                 this.clientCache.set(clientId, { data: normalized, timestamp: Date.now() });
             } catch (error) {
@@ -114,7 +128,6 @@ class Storage {
                 throw error;
             }
         } else {
-            const normalized = this.normalizeClient(client);
             this.localClients.set(clientId, normalized);
             this.clientCache.set(clientId, { data: normalized, timestamp: Date.now() });
         }
@@ -126,6 +139,7 @@ class Storage {
     }
 
     async getRoom(roomId: string): Promise<Room | null> {
+        this.cleanupCache(this.roomCache);
         const cached = this.roomCache.get(roomId);
         if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) return cached.data;
         if (this.redis) {
@@ -210,13 +224,13 @@ class Storage {
                     const clientKeys = clients.map(id => this.REDIS_KEYS.CLIENT(id));
                     const clientsData = await this.redis.mGet(clientKeys);
 
-                    clientsData.forEach((clientJson) => {
+                    clientsData.forEach((clientJson, index) => {
                         if (clientJson) {
                             const client = JSON.parse(clientJson) as Client;
                             client.room_id = null;
-                            pipeline.set(this.REDIS_KEYS.CLIENT(client.id), JSON.stringify(client));
-                            this.clientCache.set(client.id, { data: client, timestamp: Date.now() });
-                            const localClient = this.localClients.get(client.id);
+                            pipeline.set(this.REDIS_KEYS.CLIENT(clients[index]), JSON.stringify(client));
+                            this.clientCache.set(clients[index], { data: client, timestamp: Date.now() });
+                            const localClient = this.localClients.get(clients[index]);
                             if (localClient) localClient.room_id = null;
                         }
                     });
@@ -342,31 +356,38 @@ class Storage {
             try {
                 const clientKeys = clientIds.map(id => this.REDIS_KEYS.CLIENT(id));
                 const clientsData = await this.redis.mGet(clientKeys);
-                const setPipeline = this.redis.multi();
+                const pipeline = this.redis.multi();              
                 for (let i = 0; i < clientIds.length; i++) {
                     const clientJson = clientsData[i];
                     if(clientJson){
                         try{
                             const client = JSON.parse(clientJson as string) as Client;
                             client.online = false;
-                            setPipeline.set(clientKeys[i], JSON.stringify(client));
+                            pipeline.set(clientKeys[i], JSON.stringify(client));                         
+                            if (client.room_id) {
+                                pipeline.sRem(this.REDIS_KEYS.CLIENT_ROOM_INDEX(client.room_id), clientIds[i]);
+                            }
                         }
-                        catch(err){ }
+                        catch(err){ 
+                            printDebug(`[ERROR] Failed to parse client data for ${clientIds[i]}: ${err}`, DebugLevel.WARN);
+                        }
                     }
                 }
-                await setPipeline.exec();
-                }
-                catch(error){ console.error(`[ERROR] Failed to update clients online status in batch: ${error}`); }
+                await pipeline.exec();
+            }
+            catch(error){ 
+                console.error(`[ERROR] Failed to update clients online status in batch: ${error}`); 
+            }
         }
     }
 
-        async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
-            const client = await this.getClient(clientId);
-            if(!client) return;
-            client.online = online;
-            if(touchLastSeen) client.last_seen = new Date().toISOString();
-            await this.setClient(clientId, client);
-        }
+    async setClientOnline(clientId: string, online: boolean, touchLastSeen: boolean = false): Promise<void> {
+        const client = await this.getClient(clientId);
+        if(!client) return;
+        client.online = online;
+        if(touchLastSeen) client.last_seen = new Date().toISOString();
+        await this.setClient(clientId, client);
+    }
 
     async getClients(): Promise<{ [clientId: string]: Client }> {
         const result: { [clientId: string]: Client } = {};
@@ -450,6 +471,13 @@ class Storage {
     }
 
     private cleanupCache<T>(cache: Map<string, { data: T; timestamp: number }>) {
+        const now = Date.now();
+        for (const [key, entry] of cache.entries()) {
+            if (now - entry.timestamp > this.CACHE_TTL) {
+                cache.delete(key);
+            }
+        }
+        
         if (cache.size > this.MAX_CACHE_SIZE) {
             const entries = Array.from(cache.entries());
             entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
