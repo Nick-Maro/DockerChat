@@ -168,7 +168,7 @@ export const ChatWindow = memo(() => {
           </div>
         ) : (
           activeMessages.map((msg, index) => (
-            <div key={index} className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} flex`}>
+            <div key={msg.id || `fallback-${index}`} className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} flex`}>
               <div className={styles.bubble} style={getMessageType(msg.mimetype) === "image" ? { width: '35%' } : {}}>
                 <span className={styles.username}>
                   {msg.from_client === username ? 'You' : msg.from_client}
