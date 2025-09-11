@@ -22,9 +22,48 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const [privateMessages, setPrivateMessages] = useState<Record<string, Message[]>>({});
 
   const lastMessageIndex = useRef(0);
+  const messageQueue = useRef<any[]>([]);
+  const wasDisconnected = useRef(false);
 
   const sharedKeys = useRef<Record<string, CryptoKey>>({});
   const pendingEcdh = useRef<Record<string, (k: string | null) => void>>({});
+
+  const queuedSendMessage = useCallback(async (msg: any) => {
+    if(status === 'open') {
+      try {
+        await sendAuthenticatedMessage(sendMessage, msg);
+      } catch (e) {
+        messageQueue.current.push(msg);
+      }
+    } else {
+      messageQueue.current.push(msg);
+    }
+  }, [status, sendMessage]);
+
+  const processQueue = useCallback(async () => {
+    if(status !== 'open' || !username) return;
+    const queue = [...messageQueue.current];
+    messageQueue.current = [];
+    
+    for(const msg of queue) {
+      try {
+        await sendAuthenticatedMessage(sendMessage, msg);
+        await new Promise(resolve => setTimeout(resolve, 50));
+      } catch (e) {
+        console.error('Failed to send queued message:', e);
+        messageQueue.current.push(msg);
+      }
+    }
+  }, [status, username, sendMessage]);
+
+  useEffect(() => {
+    if(status === 'closed' || status === 'error') {
+      wasDisconnected.current = true;
+    } else if(status === 'open' && wasDisconnected.current) {
+      wasDisconnected.current = false;
+      setTimeout(processQueue, 2000);
+    }
+  }, [status, processQueue]);
 
   const requestPeerEcdh = useCallback(async (target: string, timeout = 3500) => {
     if (!username || status !== 'open') return null;
@@ -32,10 +71,10 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     if (pendingEcdh.current[target]) return null;
     return await new Promise<string | null>(resolve => {
       pendingEcdh.current[target] = (k: string | null) => { resolve(k); delete pendingEcdh.current[target]; };
-      sendAuthenticatedMessage(sendMessage, { command: `get_ecdh_key:${target}`, client_id: username }).catch(() => {});
+      queuedSendMessage({ command: `get_ecdh_key:${target}`, client_id: username }).catch(() => {});
       setTimeout(() => { if (pendingEcdh.current[target]) pendingEcdh.current[target](null); }, timeout);
     });
-  }, [username, status, sendMessage]);
+  }, [username, status, queuedSendMessage]);
 
   const getOrCreateSharedKey = useCallback(async (peer: string) : Promise<CryptoKey | undefined> => {
     if(!peer || peer === username) return undefined;
@@ -130,7 +169,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 if(room){
                   setCurrentRoom(room);
                   setRoomMessages([]);
-                  await sendAuthenticatedMessage(sendMessage, { command: 'get_messages', client_id: username });
+                  await queuedSendMessage({ command: 'get_messages', client_id: username });
                 }
               }
             }
@@ -345,7 +384,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         catch(e){ console.error('Error processing incoming websocket message', e); }
       }
     })();
-  }, [messages, currentClient, currentRoom, username, incrementUnread, tryDecryptForPeer, requestPeerEcdh]);
+  }, [messages, currentClient, currentRoom, username, incrementUnread, tryDecryptForPeer, requestPeerEcdh, queuedSendMessage]);
 
   useEffect(() => {
     if(status === 'open' && username){
@@ -355,38 +394,38 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           const existing = localStorage.getItem('ecdh_private');
           if(!existing){
             const pub = await generateECDHKeyPair();
-            await sendAuthenticatedMessage(sendMessage, { command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
+            await queuedSendMessage({ command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
           } else {
             const pub = await getLocalECDHPublic();
             if(pub) {
-              await sendAuthenticatedMessage(sendMessage, { command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
+              await queuedSendMessage({ command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
             }
           }
-          await sendAuthenticatedMessage(sendMessage, { command: 'list_rooms', client_id: username });
-          await sendAuthenticatedMessage(sendMessage, { command: 'list_clients', client_id: username });
+          await queuedSendMessage({ command: 'list_rooms', client_id: username });
+          await queuedSendMessage({ command: 'list_clients', client_id: username });
         } catch (e) { console.error('init error', e); }
       })();
     }
-  }, [status, username]);
+  }, [status, username, queuedSendMessage]);
 
   const joinRoom = (roomName: string) => {
     if(!username || status !== 'open') return;
     if(currentRoom?.name === roomName) return;
     setCurrentClient(null);
-    sendAuthenticatedMessage(sendMessage, { command: `join_room:${roomName}`, client_id: username });
+    queuedSendMessage({ command: `join_room:${roomName}`, client_id: username });
   };
 
-  const leaveRoom = () => { if (username && currentRoom) { sendAuthenticatedMessage(sendMessage, { command: 'leave_room', client_id: username }); setCurrentRoom(null); setRoomMessages([]); } };
+  const leaveRoom = () => { if (username && currentRoom) { queuedSendMessage({ command: 'leave_room', client_id: username }); setCurrentRoom(null); setRoomMessages([]); } };
 
   const sendMessageToRoom = (text: string) => {
     if(!username || !currentRoom || status !== 'open') return;
     const ts = new Date().toISOString();
     setRoomMessages(prev => [...prev, { from_client: username, text, timestamp: ts, public_key: '', content: '', encrypted: false }]);
-    sendAuthenticatedMessage(sendMessage, { command: `send_message:${text}`, client_id: username });
+    queuedSendMessage({ command: `send_message:${text}`, client_id: username });
   };
 
   const sendPrivateMessage = async (text: string) => {
-    if(!username || !currentClient || status !== 'open') return;
+    if(!username || !currentClient) return;
     const peer = currentClient.client_id;
     if(peer === username) return;
     const ts = new Date().toISOString();
@@ -395,7 +434,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     if(!key){
       const msg: Message = { from_client: username, to_client: peer, text: text + ' (non criptato)', timestamp: ts, public_key: '', content: '', encrypted: false };
       setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
-      await sendAuthenticatedMessage(sendMessage, { command: `send_private:${peer}:${text}`, client_id: username });
+      await queuedSendMessage({ command: `send_private:${peer}:${text}`, client_id: username });
       return;
     }
     const encrypted = await encryptMessage(key, text);
@@ -418,20 +457,20 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       file: false
     };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), localMsg] }));
-    await sendAuthenticatedMessage(sendMessage, { command: `send_private:${peer}:ENC`, client_id: username, encrypted: true, content: encrypted, sk_fingerprint: sk_fp, sender_ecdh_public: sender_pub });
+    await queuedSendMessage({ command: `send_private:${peer}:ENC`, client_id: username, encrypted: true, content: encrypted, sk_fingerprint: sk_fp, sender_ecdh_public: sender_pub });
   };
 
   const sendPrivateFile = async (file: File) => {
-    if (!username || !currentClient || status !== 'open') return;
+    if (!username || !currentClient) return;
     const peer = currentClient.client_id;
     const toBase64 = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(f); });
     const content = await toBase64(file);
     const ts = new Date().toISOString();
     const key = await getOrCreateSharedKey(peer).catch(() => undefined);
-    if (!key) { const msg: Message = { from_client: username, to_client: peer, text: file.name + ' (non criptato)', timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false }; setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); await sendAuthenticatedMessage(sendMessage, { command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); return; }
+    if (!key) { const msg: Message = { from_client: username, to_client: peer, text: file.name + ' (non criptato)', timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false }; setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); return; }
     const msg: Message = { from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: true };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
-    await sendAuthenticatedMessage(sendMessage, { command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content, encrypted: true });
+    await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content, encrypted: true });
   };
 
   const sendFile = async (file: File) => {
@@ -458,7 +497,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     };
 
     setRoomMessages(prev => [...prev, msg]);
-    await sendAuthenticatedMessage(sendMessage, {
+    await queuedSendMessage({
       command: `send_message:${file.name}`,
       client_id: username,
       file: true,
@@ -471,11 +510,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const fetchPrivateMessages = async (clientId: string) => {
     setCurrentRoom(null);
     setCurrentClient(clients.find(c => c.client_id === clientId) || null);
-    await sendAuthenticatedMessage(sendMessage, { command: 'get_private_messages', client_id: username, target_client_id: clientId });
+    await queuedSendMessage({ command: 'get_private_messages', client_id: username, target_client_id: clientId });
   };
 
   const createRoom = (name: string) => {
-    sendAuthenticatedMessage(sendMessage, { command: `create_room:${name}`, client_id: username });
+    queuedSendMessage({ command: `create_room:${name}`, client_id: username });
   };
 
   return (

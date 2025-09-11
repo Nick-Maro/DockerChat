@@ -13,6 +13,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const queue = useRef<any[]>([]);
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const clientIdRef = useRef<string | null>(null);
 
   const handleMessage = useCallback((event: MessageEvent) => {
     let data;
@@ -24,6 +25,10 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       const latency = Date.now() - data.timestamp;
       console.log(`[WS] Ping latency: ${latency}ms`);
       return;
+    }
+
+    if(data.client_id && !clientIdRef.current){
+      clientIdRef.current = data.client_id;
     }
 
     setMessages(prev => [...prev, data]);
@@ -46,17 +51,20 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
 
   const createConnection = useCallback(() => {
     cleanup();
-    
+        
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setStatus("open");
-      queue.current.forEach(msg => ws.send(JSON.stringify(msg)));
+      queue.current.forEach(msg => {
+        try {
+          ws.send(JSON.stringify(msg));
+        } catch (e) {
+          console.error("Failed to send queued message:", e);
+        }
+      });
       queue.current = [];
-
-      try{ ws.send(JSON.stringify({ command: 'subscribe', topic: 'global' })); }
-      catch(e){ console.error("Failed to subscribe to global topic", e); }
     };
 
     ws.onclose = () => setStatus("closed");
@@ -70,16 +78,30 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   }, [createConnection, cleanup]);
 
   const sendMessage = useCallback((msg: any) => {
-    if(wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(msg));
-    else queue.current.push(msg);
-  }, []);
+    if(clientIdRef.current && !msg.client_id){
+      msg.client_id = clientIdRef.current;
+    }
+    
+    if(wsRef.current?.readyState === WebSocket.OPEN && status === "open") {
+      try {
+        wsRef.current.send(JSON.stringify(msg));
+      } catch (e) {
+        queue.current.push(msg);
+      }
+    } else {
+      queue.current.push(msg);
+    }
+  }, [status]);
 
   useEffect(() => {
     if(!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     pingIntervalRef.current = setInterval(() => {
       if(wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        const pingMsg = clientIdRef.current 
+          ? { type: 'ping', timestamp: Date.now(), client_id: clientIdRef.current }
+          : { type: 'ping', timestamp: Date.now() };
+        wsRef.current.send(JSON.stringify(pingMsg));
       }
     }, 20000);
 
@@ -94,7 +116,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   useEffect(() => {
     if (status === "closed" || status === "error") {
       console.log("[WS] Connection lost, attempting to reconnect in 3 seconds...");
-      
+                
       reconnectTimerRef.current = setTimeout(() => {
         console.log("[WS] Attempting to reconnect...");
         setStatus("connecting");
