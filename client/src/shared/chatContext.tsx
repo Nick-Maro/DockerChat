@@ -21,16 +21,15 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const [privateMessages, setPrivateMessages] = useState<Record<string, Message[]>>({});
 
-  // caches & helpers
   const lastMessageIndex = useRef(0);
 
-  // in-memory shared key cache and pending ecdh resolvers
   const sharedKeys = useRef<Record<string, CryptoKey>>({});
   const pendingEcdh = useRef<Record<string, (k: string | null) => void>>({});
 
   const requestPeerEcdh = useCallback(async (target: string, timeout = 3500) => {
     if (!username || status !== 'open') return null;
     if (!target) return null;
+    if (pendingEcdh.current[target]) return null;
     return await new Promise<string | null>(resolve => {
       pendingEcdh.current[target] = (k: string | null) => { resolve(k); delete pendingEcdh.current[target]; };
       sendAuthenticatedMessage(sendMessage, { command: `get_ecdh_key:${target}`, client_id: username }).catch(() => {});
@@ -211,7 +210,18 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 break;
 
               case 'client_ecdh_updated':
-                pendingEcdh.current[msg.client_id]?.(msg.ecdh_key);
+                if(msg.ecdh_key && msg.client_id) {
+                  try {
+                    localStorage.setItem(`ecdh_peer:${msg.client_id}`, msg.ecdh_key);
+                    const derived = await deriveSharedKey(msg.ecdh_key);
+                    sharedKeys.current[msg.client_id] = derived;
+                  } catch(e) {
+                    console.warn('Failed to update ECDH key:', e);
+                  }
+                }
+                if(pendingEcdh.current[msg.client_id]) {
+                  pendingEcdh.current[msg.client_id](msg.ecdh_key);
+                }
                 break;
 
               case 'room_created':
@@ -227,117 +237,108 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 }
                 break;
 
-              // default: console.log("Evento broadcast non gestito:", msg);
-            }
-          }
+              case 'room_message_received': {
+                const m = msg as any;
+                let text = m.text || '';
+                let encrypted = !!m.encrypted;
 
+                if(m.file && m.filename && m.content){
+                  text = m.filename;
+                  encrypted = false;
+                }
+                else if(encrypted){
+                  const peer = m.from_client;
+                  const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
+                  text = res.text;
+                  encrypted = !res.ok;
+                }
 
-          if(msg.event){
-            if(msg.event === 'get_ecdh_key'){
-              if(msg.ecdh_key && msg.target_user){
-                try{ localStorage.setItem(`ecdh_peer:${msg.target_user}`, msg.ecdh_key); } catch {}
-                try{ const k = await deriveSharedKey(msg.ecdh_key); sharedKeys.current[msg.target_user] = k; } catch {}
-                if (pendingEcdh.current[msg.target_user]) pendingEcdh.current[msg.target_user](msg.ecdh_key);
-              }
-            }
+                const messageObj: Message = {
+                  id: m.message_id || `${m.from_client}:${Date.now()}`,
+                  from_client: m.from_client,
+                  to_client: m.to_client,
+                  text,
+                  timestamp: m.timestamp || new Date().toISOString(),
+                  public_key: m.public_key || '',
+                  file: m.file || false,
+                  filename: m.filename,
+                  mimetype: m.mimetype,
+                  content: m.content || '',
+                  encrypted
+                };
 
-            if(msg.event === 'private_message_received'){
-              const m = msg as any;
-              
-              if(!(m.from_client === username || m.to_client === username)) return;
-              if(m.from_client === username && m.to_client !== username) return;
-              if(m.from_client === username && m.to_client === username) return;
-              
-              if(m.from_client !== username && currentClient?.client_id === m.from_client){
-                if(document.hidden) incrementUnread(`client_${m.from_client}`);
-              }
-              
-              const isFile = !!m.file && !!m.content;
-              let text = m.text || '';
-              let encrypted = !!m.encrypted;
-
-              if(isFile){
-                text = m.filename || 'File';
-                encrypted = false;
-              }
-              else if(encrypted){
-                const peer = m.from_client === username ? m.to_client : m.from_client;
-                const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
-                text = res.text;
-                encrypted = !res.ok;
-              }
-
-              const pm: Message = {
-                id: m.message_id || `${m.from_client}:${Date.now()}`,
-                from_client: m.from_client,
-                to_client: m.to_client,
-                text,
-                timestamp: m.timestamp || new Date().toISOString(),
-                public_key: '',
-                content: m.content || '',
-                encrypted,
-                file: isFile,
-                filename: m.filename,
-                mimetype: m.mimetype
-              };
-
-              if(m.from_client === username){
-                setPrivateMessages(prev => {
-                  const list = prev[m.from_client] || [];
-                  const filtered = list.filter(msg => !msg.id.startsWith('local-'));
-                  return { ...prev, [m.from_client]: [...filtered, pm] };
-                });
-                return;
-              }
-            }
-
-            if(msg.event === 'room_message_received' || msg.event === 'private_message_received'){
-              const m = msg as any;
-              let peer = m.from_client === username ? m.to_client : m.from_client;
-              let text = m.text || '';
-              let encrypted = !!m.encrypted;
-
-              if(m.file && m.filename && m.content){
-                text = m.filename;
-                encrypted = false;
-              }
-              else if(encrypted){
-                const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
-                text = res.text;
-                encrypted = !res.ok;
-              }
-
-              const messageObj: Message = {
-                id: m.message_id || `${peer}:${Date.now()}`,
-                from_client: m.from_client,
-                to_client: m.to_client,
-                text,
-                timestamp: m.timestamp || new Date().toISOString(),
-                public_key: m.public_key || '',
-                file: m.file || false,
-                filename: m.filename,
-                mimetype: m.mimetype,
-                content: m.content || '',
-                encrypted
-              };
-
-              if(msg.event === 'room_message_received') {
                 if(m.from_client !== username && currentRoom?.name !== m.room_name && document.hidden) {
                   incrementUnread(`room_${m.room_name}`);
                 }
                 setRoomMessages(prev => [...prev, messageObj]);
+                break;
               }
-              else {
-                setPrivateMessages(prev => {
-                  const list = prev[peer] || [];
-                  return { ...prev, [peer]: [...list, messageObj] };
-                });
+
+              case 'private_message_received': {
+                const m = msg as any;
+                
+                if(!(m.from_client === username || m.to_client === username)) return;
+                if(m.from_client === username && m.to_client === username) return;
+                
+                if(m.from_client !== username){
+                  const isCurrentChat = currentClient?.client_id === m.from_client;
+                  if(document.hidden || !isCurrentChat) {
+                    incrementUnread(`client_${m.from_client}`);
+                  }
+                }
+                
+                const isFile = !!m.file && !!m.content;
+                let text = m.text || '';
+                let encrypted = !!m.encrypted;
+
+                if(isFile){
+                  text = m.filename || 'File';
+                  encrypted = false;
+                }
+                else if(encrypted){
+                  const peer = m.from_client === username ? m.to_client : m.from_client;
+                  const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
+                  text = res.text;
+                  encrypted = !res.ok;
+                }
+
+                const pm: Message = {
+                  id: m.message_id || `${m.from_client}:${Date.now()}`,
+                  from_client: m.from_client,
+                  to_client: m.to_client,
+                  text,
+                  timestamp: m.timestamp || new Date().toISOString(),
+                  public_key: '',
+                  content: m.content || '',
+                  encrypted,
+                  file: isFile,
+                  filename: m.filename,
+                  mimetype: m.mimetype
+                };
+
+                const peer = m.from_client === username ? m.to_client : m.from_client;
+                if(m.from_client === username){
+                  setPrivateMessages(prev => {
+                    const list = prev[m.to_client] || [];
+                    const filtered = list.filter(msg => !msg.id.startsWith('local-'));
+                    return { ...prev, [m.to_client]: [...filtered, pm] };
+                  });
+                } else {
+                  setPrivateMessages(prev => {
+                    const list = prev[peer] || [];
+                    return { ...prev, [peer]: [...list, pm] };
+                  });
+                }
+                break;
               }
-            }
 
-
-            if(msg.event === 'client_ecdh_updated'){
-              if(msg.client_id) { try { await requestPeerEcdh(msg.client_id); } catch {} }
+              case 'get_ecdh_key':
+                if(msg.ecdh_key && msg.target_user){
+                  try{ localStorage.setItem(`ecdh_peer:${msg.target_user}`, msg.ecdh_key); } catch {}
+                  try{ const k = await deriveSharedKey(msg.ecdh_key); sharedKeys.current[msg.target_user] = k; } catch {}
+                  if (pendingEcdh.current[msg.target_user]) pendingEcdh.current[msg.target_user](msg.ecdh_key);
+                }
+                break;
             }
           }
         }
@@ -355,6 +356,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
           if(!existing){
             const pub = await generateECDHKeyPair();
             await sendAuthenticatedMessage(sendMessage, { command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
+          } else {
+            const pub = await getLocalECDHPublic();
+            if(pub) {
+              await sendAuthenticatedMessage(sendMessage, { command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });
+            }
           }
           await sendAuthenticatedMessage(sendMessage, { command: 'list_rooms', client_id: username });
           await sendAuthenticatedMessage(sendMessage, { command: 'list_clients', client_id: username });
