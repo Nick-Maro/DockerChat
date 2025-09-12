@@ -16,9 +16,6 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const reconnectTimerRef = useRef<number | null>(null);
   const clientIdRef = useRef<string | null>(null);
 
-  console.log(import.meta.env.VITE_API_HOST, import.meta.env.VITE_API_PORT);
-  console.log("All env vars:", import.meta.env);
-
   const handleMessage = useCallback((event: MessageEvent) => {
     let data;
     try{ data = JSON.parse(event.data); }
