@@ -77,7 +77,6 @@ func (fl *FirewallLogger) initLogFile() error {
 
 		logFilePath := filepath.Join(fl.logDir, "firewall.log")
 
-		// Se è un nuovo giorno e il file esiste, fai il backup
 		if fl.currentDate != "" {
 			backupPath := filepath.Join(fl.logDir, fmt.Sprintf("firewall-%s.log", fl.currentDate))
 			os.Rename(logFilePath, backupPath)
@@ -178,4 +177,8 @@ func (fl *FirewallLogger) LogCleanup(deletedEntries int) {
 
 func (fl *FirewallLogger) LogStats(totalConnections, blockedConnections, allowedConnections int) {
 	fl.writeLog(INFO, "STATS", "Total: %d, Blocked: %d, Allowed: %d", totalConnections, blockedConnections, allowedConnections)
+}
+
+func (fl *FirewallLogger) LogDDoSProtection(ip string, hourlyAttempts, limit int, action string) {
+	fl.writeLog(WARNING, "DDOS", "IP: %s - Hourly attempts: %d/%d - Action: %s", ip, hourlyAttempts, limit, action)
 }

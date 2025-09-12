@@ -44,19 +44,24 @@ def index():
 def firewall():
     if request.method == "POST":
         new_rules = request.form.get("rules")
+        
+        # JSON Validation
         try:
-            rules_data = json.loads(new_rules)
+            json.loads(new_rules)
+        except:
+            flash("Invalid JSON", "error")
+            return render_template("firewall.html", rules=new_rules), 400
+        
+        # Save
+        try:
             with open(FIREWALL_RULES_PATH, "w") as f:
-                json.dump(rules_data, f, indent=4)
-            flash("Firewall rules updated successfully", "success")
-        except PermissionError:
-            flash("Error: cannot modify rules (read-only access)", "error")
-            return render_template("firewall.html", rules=new_rules, error=True), 403
-        except Exception as e:
-            flash(f"Error updating rules: {e}", "error")
-            return render_template("firewall.html", rules=new_rules, error=True), 400
-                
-        return redirect(url_for("firewall"))
+                f.write(new_rules)
+            flash("Rules updated", "success")
+        except:
+            flash("Save error", "error")
+            return render_template("firewall.html", rules=new_rules), 500
+        
+        return render_template("firewall.html", rules=new_rules)
         
     # Default rules structure
     default_rules = {

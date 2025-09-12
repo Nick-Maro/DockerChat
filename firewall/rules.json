@@ -4,6 +4,16 @@
     "127.0.0.1",
     "::1"
   ],
-  "allowed_ports": [80, 443, 8080, 5000, 5001, 6379],
-  "max_attempts_per_minute": 100
+  "allowed_ports": [
+    80,
+    443,
+    8080,
+    5000,
+    5001,
+    6379
+  ],
+  "max_attempts_per_minute": 1000,
+  "max_attempts_per_hour": 10000,
+  "auto_block_enabled": true,
+  "auto_block_duration_hours": 1
 }
