@@ -14,8 +14,7 @@ venv/
 .idea/
 .vscode/
 
-private_key.pem
-public_key.pem
+.env
 
 volumes/
 **/build/
