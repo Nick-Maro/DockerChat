@@ -1,0 +1,22 @@
+{
+  "patterns": [
+    {
+      "pattern": "https?://[^\\s]+",
+      "replacement": "[LINK]",
+      "category": "links",
+      "flags": "gi"
+    },
+    {
+      "pattern": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+      "replacement": "[EMAIL]",
+      "category": "privacy",
+      "flags": "gi"
+    },
+    {
+      "pattern": "\\b(?:\\d{4}[\\s-]?){3}\\d{4}\\b",
+      "replacement": "[CARD]",
+      "category": "privacy",
+      "flags": "gi"
+    }
+  ]
+}

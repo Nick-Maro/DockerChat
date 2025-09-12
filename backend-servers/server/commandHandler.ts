@@ -6,10 +6,34 @@ import {DebugLevel, generateUUID, getCurrentISOString, printDebug } from "./util
 import {CryptoAuth} from "./utils/cryptography/auth.ts";
 import {AuthenticationMiddleware} from "./utils/cryptography/auth-middleware.ts"
 import {SecureSession} from "./utils/cryptography/session.ts"
+import {MessageFilter} from "./src/filters/MessageFilter.ts";
 import type {Client, Room, WebSocketData, WSMessage, WSResponse} from './types';
 
 export class CommandHandler {
-    constructor(private dataManager: DataManager, private serverId: string, private server: Server){ }
+    private messageFilter: MessageFilter;
+
+    constructor(private dataManager: DataManager, private serverId: string, private server: Server){ 
+        this.messageFilter = new MessageFilter();
+        this.loadCustomFilters();
+    }
+
+    private async loadCustomFilters(): Promise<void> {
+        try {
+            await this.messageFilter.loadLDNOOBWLists('./src/filters');
+            await this.messageFilter.loadPatternsFromFile('./src/filters/custom-filters.json');
+            printDebug('[FILTER] Filters loaded successfully', DebugLevel.INFO);
+        } catch (error) {
+            printDebug('[FILTER] Failed to load filters: ' + error, DebugLevel.WARN);
+        }
+    }
+
+    private filterMessage(message: string): string {
+        return this.messageFilter.filterMessage(message);
+    }
+
+    private containsFilteredContent(message: string): boolean {
+        return this.messageFilter.containsFilteredContent(message);
+    }
 
     public async handle(ws: ServerWebSocket<WebSocketData>, message: string | Buffer, wsClientMap: Map<string, ServerWebSocket<WebSocketData>>) {
         await this.dataManager.cleanExpiredData();
@@ -284,17 +308,23 @@ export class CommandHandler {
                 break;
             }
             case command.startsWith("create_room:"): {
-                const room_name = command.split(":", 2)[1];
+                let room_name = command.split(":", 2)[1];
                 if (!room_name) {
                     response.error = "Command format: create_room:ROOM_NAME";
                     break;
                 }
+
+                if (this.containsFilteredContent(room_name)) {
+                    printDebug(`[FILTER] Inappropriate room name by ${clientId}: ${room_name}`, DebugLevel.WARN);
+                    room_name = this.filterMessage(room_name);
+                }
+
                 if(room_name.length > 50) {
                     response.error = "Room name is too long (max 50 characters)";
                     break;
                 }
-                if (!/^[a-zA-Z0-9_\-\s]+$/.test(room_name)) {
-                    response.error = "Room name can only contain letters, numbers, underscores, hyphens, and spaces";
+                if (!/^[a-zA-Z0-9_\-\s*]+$/.test(room_name)) {
+                    response.error = "Room name can only contain letters, numbers, underscores, hyphens, spaces, and asterisks";
                     break;
                 }
                 const room = await this.dataManager.getRoom(room_name);
@@ -366,7 +396,15 @@ export class CommandHandler {
                 break;
             }
             case command.startsWith("send_message:"): {
-                const message_text = command.split(":", 2)[1];
+                let message_text = command.split(":", 2)[1];
+                
+                if(!data?.encrypted && message_text) {
+                    if (this.containsFilteredContent(message_text)) {
+                        printDebug(`[FILTER] Inappropriate content in room message from ${clientId}`, DebugLevel.WARN);
+                    }
+                    message_text = this.filterMessage(message_text);
+                }
+                
                 if(!data?.encrypted && (!message_text || !this.validateMessage(message_text))){
                     response.error = "Invalid message length";
                     break;
@@ -446,7 +484,15 @@ export class CommandHandler {
                 const to_client_id = parts[1];
                 let message_text = parts[2];
 
-                if(data?.encrypted === true && data?.content) message_text = data.content;
+                if(data?.encrypted === true && data?.content) {
+                    message_text = data.content;
+                } else if(message_text) {
+                    if (this.containsFilteredContent(message_text)) {
+                        printDebug(`[FILTER] Inappropriate content in private message from ${clientId} to ${to_client_id}`, DebugLevel.WARN);
+                    }
+                    message_text = this.filterMessage(message_text);
+                }
+                
                 if (!(data?.encrypted === true)){
                     if(!message_text || !this.validateMessage(message_text)){
                         response.error = "Invalid message length";
@@ -514,7 +560,6 @@ export class CommandHandler {
 
                 printDebug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`, DebugLevel.LOG);
 
-                // fixed?
                 const targetWs = wsClientMap.get(to_client_id);
                     if (targetWs && targetWs.readyState === 1) {
                         targetWs.send(JSON.stringify(messageData));
@@ -618,7 +663,6 @@ export class CommandHandler {
                 const wasOffline = !currentClient.online;
                 await this.dataManager.setClientOnline(client_id, true, true);
                 
-       
                 if (wasOffline) {
                     this.server.publish("global", JSON.stringify({
                         event: "client_online",
@@ -640,7 +684,6 @@ export class CommandHandler {
                 wsClientMap.delete(client_id);
                 await this.leaveBroadcast(client_id, room_id, wsClientMap, "user_disconnect");
                 
-      
                 this.server.publish("global", JSON.stringify({
                     event: "client_offline",
                     client_id: client_id,
@@ -702,5 +745,15 @@ export class CommandHandler {
 
     private validateMessage(message: string): boolean {
         return message.length <= 1024 && message.trim().length > 0;
+    }
+
+    public addFilterPattern(pattern: RegExp, replacement: string, category: string): void {
+        this.messageFilter.addPattern({ pattern, replacement, category });
+        printDebug(`[FILTER] Added new filter pattern for category: ${category}`, DebugLevel.INFO);
+    }
+
+    public removeFiltersByCategory(category: string): void {
+        this.messageFilter.removePatternsByCategory(category);
+        printDebug(`[FILTER] Removed all filters for category: ${category}`, DebugLevel.INFO);
     }
 }
