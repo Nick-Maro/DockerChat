@@ -661,8 +661,7 @@ export class CommandHandler {
             }
             case command === "heartbeat": {
                 const wasOffline = !currentClient.online;
-                await this.dataManager.setClientOnline(client_id, true, true);
-                
+                await this.dataManager.setClientOnline(client_id, true, true);              
                 if (wasOffline) {
                     this.server.publish("global", JSON.stringify({
                         event: "client_online",
@@ -683,7 +682,6 @@ export class CommandHandler {
                 await this.dataManager.removeClient(client_id);
                 wsClientMap.delete(client_id);
                 await this.leaveBroadcast(client_id, room_id, wsClientMap, "user_disconnect");
-                
                 this.server.publish("global", JSON.stringify({
                     event: "client_offline",
                     client_id: client_id,
