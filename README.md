@@ -75,6 +75,17 @@ The system supports HTTP communication for text messages and uses Docker Compose
 | `dashboard`     | Monitoring web interface                | `dashboard.localhost` | System monitoring and management                       |
 | `redis`         | In-memory key-value database            | -                     | Internal data storage / caching                        |
 
+## Acknowledgements
+
+I would like to thank all our contributors, who helped make this project possible. Your feedback and collaboration have been invaluable.
+<br>
+<br>
+<a href="https://github.com/Nick-Maro/DockerChat/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Nick-Maro/DockerChat" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
