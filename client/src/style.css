@@ -32,6 +32,7 @@ body{background-color: var(--background-color);}
 .hide{display: none;}
 
 button{padding: 10px; border: none; background: none; outline: none; cursor: pointer;}
+input, textarea, select{font-size: 16px !important;}
 input{border: none; outline: none;}
 p{color: #FFFFFF40;}
 ul{list-style: none;}

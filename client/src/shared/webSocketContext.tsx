@@ -12,8 +12,8 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting");
   const [messages, setMessages] = useState<SocketMessage[]>([]);
   const queue = useRef<any[]>([]);
-  const pingIntervalRef = useRef<number | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clientIdRef = useRef<string | null>(null);
 
   const handleMessage = useCallback((event: MessageEvent) => {
