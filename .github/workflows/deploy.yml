@@ -1,0 +1,52 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H vps.marottanicolo.me >> ~/.ssh/known_hosts
+
+      - name: Deploy application on VPS
+        run: |
+          ssh gh-actions@vps.marottanicolo.me << 'EOF'
+            cd /home/shared/DockerChat
+            
+            # Force pull latest changes (overwrites local changes)
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # Stop existing containers
+            docker compose down || true
+            
+            # Remove old images to free space (optional)
+            docker image prune -f
+            
+            # Build and start services
+            docker compose up --build -d
+            
+            # Show running containers
+            docker compose ps
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 30
+          ssh gh-actions@vps.marottanicolo.me << 'EOF'
+            cd /home/shared/DockerChat
+            echo "=== Container Status ==="
+            docker compose ps
+            echo "=== Container Logs (last 50 lines) ==="
+            docker compose logs --tail=50
+          EOF
