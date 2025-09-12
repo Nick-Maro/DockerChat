@@ -1,5 +1,4 @@
 worker_processes auto;
-
 events {
     worker_connections 1024;
 }
@@ -7,99 +6,104 @@ events {
 http {
     access_log /var/log/nginx/access.log combined;
     error_log /var/log/nginx/error.log warn;
-
     include /etc/nginx/mime.types;
-
     keepalive_timeout 65;
     keepalive_requests 100;
-
     limit_req_zone $binary_remote_addr zone=one:10m rate=10r/s;
-
-    # static contents cache
     proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=backend_cache:50m max_size=500m inactive=60m use_temp_path=off;
 
-    # round-robin balacing (default)
+    # Backend API pool
     upstream backend_pool {
-        server server:5000;
+        server SERVER_UPSTREAM_PLACEHOLDER;
         keepalive 32;
     }
 
+    # CLIENT SERVER BLOCK
     server {
-        listen 8080;
-        server_name client.localhost;
-        limit_req zone=one burst=20 nodelay;
-        
-        root /usr/share/nginx/html;
-        index index.html;
+        listen CLIENT_LISTEN_PORT_PLACEHOLDER;
+        server_name CLIENT_HOST_PLACEHOLDER;
+        CLIENT_TLS_BLOCK_PLACEHOLDER
 
         location / {
-            proxy_pass http://client:80/;
+            proxy_pass http://client:CLIENT_PORT_PLACEHOLDER/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            
+            # Headers più permissivi per il client
+            add_header X-Frame-Options SAMEORIGIN always;
+            add_header X-Content-Type-Options nosniff always;
         }
     }
 
+    # DASHBOARD SERVER BLOCK
     server {
-        listen 8080;
-        server_name dashboard.localhost;
+        listen DASHBOARD_LISTEN_PORT_PLACEHOLDER;
+        server_name DASHBOARD_HOST_PLACEHOLDER;
+        DASHBOARD_TLS_BLOCK_PLACEHOLDER
 
         location / {
-            proxy_pass http://dashboard:80/;
+            proxy_pass http://dashboard:DASHBOARD_PORT_PLACEHOLDER/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            
+            # Headers più permissivi per il dashboard
+            add_header X-Frame-Options SAMEORIGIN always;
+            add_header X-Content-Type-Options nosniff always;
         }
     }
 
+    # API SERVER BLOCK
     server {
-        listen 8080;
-        server_name api.localhost;
+        listen API_LISTEN_PORT_PLACEHOLDER;
+        server_name API_HOST_PLACEHOLDER;
+        API_TLS_BLOCK_PLACEHOLDER
 
         location / {
             proxy_pass http://backend_pool/;
-
+            
             # CORS headers
             add_header 'Access-Control-Allow-Origin' '*' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
             add_header 'Access-Control-Allow-Headers' 'Origin, Content-Type, Accept, Authorization' always;
             add_header 'Access-Control-Allow-Credentials' 'true' always;
-
-            # Gestione preflight OPTIONS
+            
             if ($request_method = OPTIONS) {
-                add_header 'Access-Control-Allow-Origin' '*' always;
-                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-                add_header 'Access-Control-Allow-Headers' 'Origin, Content-Type, Accept, Authorization' always;
-                add_header 'Access-Control-Allow-Credentials' 'true' always;
                 return 204;
             }
-
-            # security headers
-            add_header X-Content-Type-Options nosniff;
-            add_header X-Frame-Options SAMEORIGIN;
-            add_header X-XSS-Protection "1; mode=block";
-            add_header Referrer-Policy no-referrer-when-downgrade;
-            add_header Content-Security-Policy "default-src 'self'";
-
+            
+            # Security headers (più permissivi)
+            add_header X-Content-Type-Options nosniff always;
+            add_header X-Frame-Options SAMEORIGIN always;
+            add_header X-XSS-Protection "1; mode=block" always;
+            add_header Referrer-Policy no-referrer-when-downgrade always;
+            # CSP rimossa temporaneamente per debug
+            
+            # Proxy headers
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-
             proxy_http_version 1.1;
-            proxy_set_header Connection "";
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-
+            
+            # Timeouts and buffers
             proxy_connect_timeout 60s;
             proxy_send_timeout 300s;
             proxy_read_timeout 300s;
-            
             proxy_buffer_size 16k;
             proxy_buffers 8 16k;
             proxy_busy_buffers_size 32k;
-
-            # cache
+            
+            # Caching
             proxy_cache backend_cache;
             proxy_cache_valid 200 10m;
             proxy_cache_methods GET HEAD;

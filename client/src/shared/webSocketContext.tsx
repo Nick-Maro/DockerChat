@@ -1,10 +1,11 @@
 import { createContext } from "preact";
 import { useContext, useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { WS_CONFIG } from "../config";
 import { SocketMessage, SocketContextType, SocketProviderProps } from '../types';
 
 const SocketContext = createContext<SocketContextType | null>(null);
-const WS_URL = `ws://${WS_CONFIG.HOST}:${WS_CONFIG.PORT}`;
+const WS_URL = `ws://${import.meta.env.VITE_API_HOST}:${import.meta.env.VITE_API_PORT}`;
+const WSS_URL = `wss://${import.meta.env.VITE_API_HOST}:${import.meta.env.VITE_API_PORT}`;
+const WS_FINAL_URL = import.meta.env.VITE_PRODUCTION ? WSS_URL : WS_URL;
 
 export const SocketProvider = ({ children }: SocketProviderProps) => {
   const wsRef = useRef<WebSocket | null>(null);
@@ -14,6 +15,9 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const clientIdRef = useRef<string | null>(null);
+
+  console.log(import.meta.env.VITE_API_HOST, import.meta.env.VITE_API_PORT);
+  console.log("All env vars:", import.meta.env);
 
   const handleMessage = useCallback((event: MessageEvent) => {
     let data;
@@ -52,7 +56,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const createConnection = useCallback(() => {
     cleanup();
         
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(WS_FINAL_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {

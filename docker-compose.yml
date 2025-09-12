@@ -15,6 +15,7 @@ services:
       - .env
     networks:
       - clients
+      - servers
 
   reverse-proxy:
     build:
@@ -26,14 +27,18 @@ services:
       - client
       - server
     ports:
-      - "${REVERSE_PROXY_PORT}:8080"
+      - "80:80"
+      - "443:443"
     networks:
       - clients
       - servers
     volumes:
       - shared_logs:/var/log/shared
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    env_file:
+      - .env
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "https://localhost"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -80,6 +85,10 @@ services:
     build:
       context: ./client/
       dockerfile: Dockerfile
+      args:
+        VITE_PRODUCTION: ${VITE_PRODUCTION}
+        VITE_API_HOST: ${VITE_API_HOST}
+        VITE_API_PORT: ${VITE_API_PORT}
     container_name: client
     restart: unless-stopped
     expose:
@@ -88,6 +97,8 @@ services:
       - clients
     volumes:
       - shared_logs:/var/log/shared
+    env_file:
+      - .env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${CLIENT_PORT}"]
       interval: 30s
