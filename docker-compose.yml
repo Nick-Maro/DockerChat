@@ -37,7 +37,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://localhost"]
+      test: ["CMD", "curl", "-f", "http://localhost:${REVERSE_PROXY_PORT}"]
       interval: 30s
       timeout: 3s
       retries: 3

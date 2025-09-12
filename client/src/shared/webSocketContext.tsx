@@ -4,8 +4,8 @@ import { SocketMessage, SocketContextType, SocketProviderProps } from '../types'
 
 const SocketContext = createContext<SocketContextType | null>(null);
 const WS_URL = `ws://${import.meta.env.VITE_API_HOST}:${import.meta.env.VITE_API_PORT}`;
-const WSS_URL = `wss://${import.meta.env.VITE_API_HOST}:${import.meta.env.VITE_API_PORT}`;
-const WS_FINAL_URL = import.meta.env.VITE_PRODUCTION ? WSS_URL : WS_URL;
+const WSS_URL = `wss://${import.meta.env.VITE_API_HOST}`;
+const WS_FINAL_URL = import.meta.env.VITE_PRODUCTION === "TRUE" ? WSS_URL : WS_URL;
 
 export const SocketProvider = ({ children }: SocketProviderProps) => {
   const wsRef = useRef<WebSocket | null>(null);
