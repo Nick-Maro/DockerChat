@@ -84,7 +84,6 @@ I would like to thank all our contributors, who helped make this project possibl
   <img src="https://contrib.rocks/image?repo=Nick-Maro/DockerChat" />
 </a>
 
-Made with [contrib.rocks](https://contrib.rocks).
 
 
 ## License
