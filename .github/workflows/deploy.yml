@@ -30,9 +30,6 @@ jobs:
             # Stop existing containers
             docker compose down || true
             
-            # Remove old images to free space (optional)
-            docker image prune -f
-            
             # Build and start services
             docker compose up --build -d
             
