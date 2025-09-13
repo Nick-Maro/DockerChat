@@ -397,26 +397,25 @@ export class CommandHandler {
             }
             case command.startsWith("send_message:"): {
                 let message_text = command.split(":", 2)[1];
+                const isFile = data?.file === true;
+                const filename = data?.filename;
+                const mimetype = data?.mimetype; 
+                const content = data?.content;
+                const encrypted = data?.encrypted === true;
                 
-                if(!data?.encrypted && message_text) {
+                if(!encrypted && !isFile && message_text) {
                     if (this.containsFilteredContent(message_text)) {
                         printDebug(`[FILTER] Inappropriate content in room message from ${clientId}`, DebugLevel.WARN);
                     }
                     message_text = this.filterMessage(message_text);
                 }
                 
-                if(!data?.encrypted && (!message_text || !this.validateMessage(message_text))){
+                if(!encrypted && !isFile && (!message_text || !this.validateMessage(message_text))){
                     response.error = "Invalid message length";
                     break;
                 }
                 const room_id = currentClient.room_id;
                 if(room_id){
-                    const isFile = data?.file === true;
-                    const filename = data?.filename;
-                    const mimetype = data?.mimetype; 
-                    const content = data?.content;
-                    const encrypted = data?.encrypted === true;
-
                     await this.dataManager.addMessageToRoom(room_id, {
                         from_client: clientId,
                         text: encrypted ? (data?.content || '') : message_text,
@@ -435,9 +434,7 @@ export class CommandHandler {
                     for(const otherClientId of roomClients){
                         if(otherClientId === client_id) continue;
                         const otherWs = wsClientMap.get(otherClientId);
-                        if(!otherWs) continue;
-                        
-
+                        if(!otherWs) continue;                
                         const messageData = {
                             event: 'room_message_received',
                             from_client: client_id,
@@ -446,14 +443,11 @@ export class CommandHandler {
                             text: encrypted ? (data?.content || '') : message_text,
                             file: isFile,
                             encrypted: encrypted,
-                            content: encrypted ? (data?.content || '') : message_text
-                        };
-                        
-
+                            content: encrypted ? (data?.content || '') : (isFile ? content : message_text)
+                        };                       
                         if(isFile){
                             (messageData as any).filename = filename;
                             (messageData as any).mimetype = mimetype;
-                            (messageData as any).content = content;
                         }
 
                         if(encrypted) {

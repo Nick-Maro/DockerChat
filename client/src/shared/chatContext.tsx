@@ -24,6 +24,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const lastMessageIndex = useRef(0);
   const messageQueue = useRef<any[]>([]);
   const wasDisconnected = useRef(false);
+  const processedMessageIds = useRef<Set<string>>(new Set());
 
   const sharedKeys = useRef<Record<string, CryptoKey>>({});
   const pendingEcdh = useRef<Record<string, (k: string | null) => void>>({});
@@ -175,18 +176,42 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
             }
             else if (msg.command === 'get_messages') {
               const list = msg.messages || [];
+              const newMessages = [];
               for (const m of list) {
+                const msgId = m.id || `${m.room || 'unknown'}:${m.timestamp || Date.now()}:${m.from || m.from_client}`;
+                if(processedMessageIds.current.has(msgId)) continue;
+                processedMessageIds.current.add(msgId);
+                
+                const isFile = !!m.file || (!!m.filename && !!m.content);
+                let text = '';
+                let content = m.content || '';
+                
+                if (isFile) {
+                  text = m.filename || m.text || 'File';
+                } else {
+                  if (m.encrypted) {
+                    const decryptResult = await tryDecryptForPeer(m.from || m.from_client, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
+                    text = decryptResult.text;
+                  } else {
+                    text = m.content || m.text || '';
+                  }
+                }
+                
                 const roomMsg: Message = {
-                  id: m.id || `${m.room}:${Date.now()}`,
+                  id: msgId,
                   from_client: m.from || m.from_client || '',
-                  text: m.encrypted ? (await tryDecryptForPeer(m.from || m.from_client, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public)).text : (m.content || m.text || ''),
+                  text,
                   timestamp: m.timestamp || new Date().toISOString(),
                   public_key: '',
-                  content: m.content || m.text || '',
-                  encrypted: !!m.encrypted
+                  content,
+                  encrypted: !!m.encrypted && !isFile, 
+                  file: isFile,
+                  filename: m.filename,
+                  mimetype: m.mimetype
                 };
-                setRoomMessages(prev => [...prev, roomMsg]);
+                newMessages.push(roomMsg);
               }
+              setRoomMessages(prev => [...prev, ...newMessages]);
             } else if (msg.command === 'get_private_messages') {
               const clientId = currentClient?.client_id;
               if(!clientId) return;
@@ -278,14 +303,20 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
               case 'room_message_received': {
                 const m = msg as any;
+                const msgId = m.message_id || `${m.from_client}:${m.timestamp || Date.now()}`;
+                
+                if(processedMessageIds.current.has(msgId)) break;
+                processedMessageIds.current.add(msgId);
+                
+                const isFile = !!m.file;
                 let text = m.text || '';
                 let encrypted = !!m.encrypted;
 
-                if(m.file && m.filename && m.content){
+                if(isFile && m.filename){
                   text = m.filename;
                   encrypted = false;
                 }
-                else if(encrypted){
+                else if(encrypted && !isFile){
                   const peer = m.from_client;
                   const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
                   text = res.text;
@@ -293,13 +324,13 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 }
 
                 const messageObj: Message = {
-                  id: m.message_id || `${m.from_client}:${Date.now()}`,
+                  id: msgId,
                   from_client: m.from_client,
                   to_client: m.to_client,
                   text,
                   timestamp: m.timestamp || new Date().toISOString(),
                   public_key: m.public_key || '',
-                  file: m.file || false,
+                  file: isFile,
                   filename: m.filename,
                   mimetype: m.mimetype,
                   content: m.content || '',
@@ -420,7 +451,8 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const sendMessageToRoom = (text: string) => {
     if(!username || !currentRoom || status !== 'open') return;
     const ts = new Date().toISOString();
-    setRoomMessages(prev => [...prev, { from_client: username, text, timestamp: ts, public_key: '', content: '', encrypted: false }]);
+    const msgId = `local-${Date.now()}`;
+    setRoomMessages(prev => [...prev, { id: msgId, from_client: username, text, timestamp: ts, public_key: '', content: '', encrypted: false }]);
     queuedSendMessage({ command: `send_message:${text}`, client_id: username });
   };
 
@@ -474,7 +506,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   };
 
   const sendFile = async (file: File) => {
-    if(!currentRoom) return;
+    if(!currentRoom || !username) return;
     const readerToText = (f: File) => new Promise<string>((res, rej) => {
       const r = new FileReader();
       r.onload = () => res(r.result as string);
@@ -484,8 +516,10 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
     const content = await readerToText(file).catch(() => null);
     const ts = new Date().toISOString();
+    const msgId = `local-${Date.now()}`;
     const msg: Message = {
-      from_client: username!,
+      id: msgId,
+      from_client: username,
       text: file.name,
       timestamp: ts,
       file: true,

@@ -108,31 +108,40 @@ export const ChatWindow = memo(() => {
   }, [handleFileUploadWrapper]);
 
   const renderMessage = useCallback((msg: Message) => {
-    if(msg.file && msg.filename && msg.content){
-      const messageType = getMessageType(msg.mimetype);
-      return messageType === "image" ? (
-        <div className={styles.imageMessage}>
-          <a href={msg.content} download={msg.filename} target="_blank" rel="noopener noreferrer">
-            <img src={msg.content} alt={msg.filename} />
-          </a>
-          <span className={styles.fileName}>{msg.filename}</span>
-        </div>
-      ) : (
-        <p className={`${styles.fileMessage} flex`}>
-          <span>📎</span>
-          <a href={msg.content} download={msg.filename}>
-            <p>{msg.filename}</p>
-          </a>
-        </p>
-      );
-    } else if(msg.file && msg.filename && !msg.content) {
-      return (
-        <p className={`${styles.fileMessage} flex`}>
-          <span>❌</span>
-          <span>{msg.filename} (file content missing)</span>
-        </p>
-      );
+
+    const isFile = msg.file || (msg.filename && msg.content);
+    
+    if (isFile && msg.filename) {
+
+      if (msg.content) {
+        const messageType = getMessageType(msg.mimetype);
+        return messageType === "image" ? (
+          <div className={styles.imageMessage}>
+            <a href={msg.content} download={msg.filename} target="_blank" rel="noopener noreferrer">
+              <img src={msg.content} alt={msg.filename} />
+            </a>
+            <span className={styles.fileName}>{msg.filename}</span>
+          </div>
+        ) : (
+          <p className={`${styles.fileMessage} flex`}>
+            <span>📎</span>
+            <a href={msg.content} download={msg.filename}>
+              <p>{msg.filename}</p>
+            </a>
+          </p>
+        );
+      } else {
+
+        return (
+          <p className={`${styles.fileMessage} flex`}>
+            <span>❌</span>
+            <span>{msg.filename} (file content missing)</span>
+          </p>
+        );
+      }
     }
+    
+
     return <p className={styles.messageText}>{msg.text}</p>;
   }, []);
 
