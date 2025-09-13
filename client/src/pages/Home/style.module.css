@@ -14,6 +14,7 @@
     width: calc(100% - 350px);
     display: grid;
     grid-template-rows: auto 1fr auto;
+    height: 100dvh;
 }
 
 .home .header{
@@ -33,8 +34,27 @@
 /*** RESPONSIVE ***/
 
 @media screen and (max-width: 768px){
-    .sidebar{width: 100%;}
+    .sidebar{width: 100%; height: 100dvh;}
     .hideSidebar{display: none;}
     .hideMain{display: none !important;}
-    .showMain{width: 100% !important;}
+    .showMain{
+        width: 100% !important;
+        height: 100dvh !important;
+        height: 100vh !important;
+        height: calc(var(--vh, 1vh) * 100) !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10;
+        display: grid !important;
+        grid-template-rows: auto 1fr auto;
+    }
+    
+    .home main .header {
+        height: 80px;
+        min-height: 80px;
+        flex-shrink: 0;
+    }
 }

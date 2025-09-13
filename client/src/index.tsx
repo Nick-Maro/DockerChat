@@ -12,6 +12,19 @@ import { UnreadProvider } from './shared/unreadMessagesContext';
 import { Home } from './pages/Home/index.js';
 import { NotFound } from './pages/_404.js';
 
+// Mobile viewport height fix
+function setViewportHeight() {
+	const vh = window.innerHeight * 0.01;
+	document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+
+// Set on load and resize
+setViewportHeight();
+window.addEventListener('resize', setViewportHeight);
+window.addEventListener('orientationchange', () => {
+	setTimeout(setViewportHeight, 100);
+});
+
 
 export function App(){
 	return (
