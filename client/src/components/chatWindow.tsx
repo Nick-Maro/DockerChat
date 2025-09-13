@@ -9,7 +9,8 @@ import attachWhite from '../assets/icons/attach-white.svg';
 import sendWhite from '../assets/icons/send-white.svg';
 
 export const ChatWindow = memo(() => {
-  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage, sendPrivateFile } = useChat();
+  // Add removeLocalMessage to the destructured imports
+  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage, sendPrivateFile, deleteMessage, removeLocalMessage, setReply, cancelReply, replyingTo } = useChat();
   const { username } = useClient();
   
   const inputRef = useRef<HTMLInputElement>(null);
@@ -89,13 +90,31 @@ export const ChatWindow = memo(() => {
 
   const handleReply = useCallback(() => {
     const msg = selectedMessage || activeMessages.find(m => m.id === showDropdown);
-    if (!msg || !inputRef.current) return;
-    const replyText = `Reply to "${msg.text.substring(0, 30)}...": `;
-    inputRef.current.focus();
-    inputRef.current.value = replyText;
+    if (!msg) return;
+    setReply(msg);
     setSelectedMessage(null);
     setShowDropdown(null);
-  }, [selectedMessage, showDropdown, activeMessages]);
+    inputRef.current?.focus();
+  }, [selectedMessage, showDropdown, activeMessages, setReply]);
+
+  const handleDelete = useCallback(() => {
+    const msg = selectedMessage || activeMessages.find(m => m.id === showDropdown);
+    if (!msg || msg.from_client !== username || !msg.id) return;
+    
+    if (msg.id.startsWith('local-')) {
+      // Check if removeLocalMessage exists before calling it
+      if (removeLocalMessage) {
+        removeLocalMessage(msg.id);
+      } else {
+        console.warn('removeLocalMessage function not available');
+      }
+    } else {
+      deleteMessage(msg.id);
+    }
+    
+    setSelectedMessage(null);
+    setShowDropdown(null);
+  }, [selectedMessage, showDropdown, activeMessages, username, deleteMessage, removeLocalMessage]);
 
   const stopEvent = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -165,8 +184,10 @@ export const ChatWindow = memo(() => {
     if(event.key === 'Enter' && !event.shiftKey){
       event.preventDefault();
       handleSendMessage();
+    } else if(event.key === 'Escape' && replyingTo){
+      cancelReply();
     }
-  }, [handleSendMessage]);
+  }, [handleSendMessage, replyingTo, cancelReply]);
 
   const openFileDialog = useCallback(() => fileInputRef.current?.click(), []);
   
@@ -177,6 +198,10 @@ export const ChatWindow = memo(() => {
   }, [handleFileUploadWrapper]);
 
   const renderMessage = useCallback((msg: Message) => {
+    if (msg.deleted) {
+      return <p className={styles.deletedMessage}>This message was deleted</p>;
+    }
+    
     const isFile = msg.file || (msg.filename && msg.content);
     
     if (isFile && msg.filename) {
@@ -248,7 +273,7 @@ export const ChatWindow = memo(() => {
           activeMessages.map((msg, index) => (
             <div 
               key={msg.id || `fallback-${index}`} 
-              className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} ${selectedMessage?.id === msg.id ? styles.selected : ''} flex`}
+              className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} ${selectedMessage?.id === msg.id ? styles.selected : ''} ${msg.deleted ? styles.deleted : ''} flex`}
               onTouchStart={isMobile ? (e) => handleLongPressStart(msg, e) : undefined}
               onTouchMove={isMobile ? handleTouchMove : undefined}
               onTouchEnd={isMobile ? handleLongPressEnd : undefined}
@@ -259,13 +284,23 @@ export const ChatWindow = memo(() => {
                 <span className={styles.username}>
                   {msg.from_client === username ? 'You' : msg.from_client}
                 </span>
+                
+                {msg.replyTo && (
+                  <div className={styles.replyTo}>
+                    <div className={styles.replyContent}>
+                      <span className={styles.replyUser}>{msg.replyTo.from_client}</span>
+                      <span className={styles.replyText}>{msg.replyTo.text}</span>
+                    </div>
+                  </div>
+                )}
+                
                 {renderMessage(msg)}
                 <span className={styles.time}>
                   {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
 
-              {!isMobile && hoveredMessage === msg.id && (
+              {!isMobile && hoveredMessage === msg.id && !msg.deleted && (
                 <div className={styles.messageMenu}>
                   <button 
                     className={styles.menuButton}
@@ -278,6 +313,9 @@ export const ChatWindow = memo(() => {
                   {showDropdown === msg.id && (
                     <div className={styles.dropdown}>
                       <button onClick={handleReply}>Reply</button>
+                      {msg.from_client === username && (
+                        <button onClick={handleDelete} className={styles.deleteButton}>Delete</button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -294,14 +332,29 @@ export const ChatWindow = memo(() => {
         )}
       </div>
 
-      {isMobile && selectedMessage && (
+      {isMobile && selectedMessage && !selectedMessage.deleted && (
         <div className={styles.mobileActions}>
           <button onClick={handleReply} className={styles.replyButton}>
-            ↩ Reply
+            Reply
           </button>
+          {selectedMessage.from_client === username && (
+            <button onClick={handleDelete} className={styles.deleteButton}>
+              Delete
+            </button>
+          )}
           <button onClick={() => setSelectedMessage(null)} className={styles.cancelButton}>
-            ✕
+            Cancel
           </button>
+        </div>
+      )}
+
+      {replyingTo && (
+        <div className={styles.replyPreview}>
+          <div className={styles.replyPreviewContent}>
+            <span className={styles.replyingToText}>Replying to {replyingTo.from_client}</span>
+            <span className={styles.replyingToMessage}>{replyingTo.text.substring(0, 60)}...</span>
+          </div>
+          <button onClick={cancelReply} className={styles.cancelReplyButton}>✕</button>
         </div>
       )}
 
@@ -314,7 +367,7 @@ export const ChatWindow = memo(() => {
         <input 
           ref={inputRef}
           type="text"
-          placeholder={currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`}
+          placeholder={replyingTo ? `Reply to ${replyingTo.from_client}...` : (currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`)}
           onKeyPress={handleKeyPress}
           style={{ fontSize: isMobile ? '16px' : '12px' }}
         />

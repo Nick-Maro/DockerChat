@@ -14,17 +14,23 @@ export interface ClientInRoom {
 }
 
 export interface Message {
+    id?: string;
     from_client: string;
+    to_client?: string;
     text: string;
-    signature?: string;
     timestamp: string;
     public_key: string;
-    verified?: boolean;
+    content?: string;
+    encrypted?: boolean;
     file?: boolean;
     filename?: string;
     mimetype?: string;
-    content?: string;
-    encrypted?: boolean;
+    replyTo?: {
+        id: string;
+        text: string;
+        from_client: string;
+    };
+    deleted?: boolean;
 }
 
 export interface PrivateMessage {

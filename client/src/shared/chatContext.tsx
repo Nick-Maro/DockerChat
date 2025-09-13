@@ -20,6 +20,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const [privateMessages, setPrivateMessages] = useState<Record<string, Message[]>>({});
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const lastMessageIndex = useRef(0);
   const messageQueue = useRef<any[]>([]);
@@ -28,6 +29,18 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
   const sharedKeys = useRef<Record<string, CryptoKey>>({});
   const pendingEcdh = useRef<Record<string, (k: string | null) => void>>({});
+
+  const removeLocalMessage = useCallback((messageId: string) => {
+    if (currentRoom) {
+      setRoomMessages(prev => prev.filter(m => m.id !== messageId));
+    } else if (currentClient) {
+      const clientId = currentClient.client_id;
+      setPrivateMessages(prev => ({
+        ...prev,
+        [clientId]: (prev[clientId] || []).filter(m => m.id !== messageId)
+      }));
+    }
+  }, [currentRoom, currentClient]);
 
   const queuedSendMessage = useCallback(async (msg: any) => {
     if(status === 'open') {
@@ -210,7 +223,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                   encrypted: !!m.encrypted && !isFile, 
                   file: isFile,
                   filename: m.filename,
-                  mimetype: m.mimetype
+                  mimetype: m.mimetype,
+                  replyTo: m.replyTo,
+                  deleted: m.deleted
                 };
                 newMessages.push(roomMsg);
               }
@@ -252,13 +267,27 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                     encrypted,
                     file: isFile,
                     filename: m.filename,
-                    mimetype: m.mimetype
+                    mimetype: m.mimetype,
+                    replyTo: m.replyTo,
+                    deleted: m.deleted
                   } as Message;
                 }));
               };
 
               const processedMsgs = await processMessages();
               setPrivateMessages(prev => ({ ...prev, [clientId]: processedMsgs }));
+            } else if (msg.command?.startsWith('delete_message:')) {
+              const msgId = command.split(":", 2)[1];
+              if (msg.success) {
+                setRoomMessages(prev => prev.map(m => m.id === msgId ? {...m, deleted: true, text: 'This message was deleted'} : m));
+                setPrivateMessages(prev => {
+                  const updated = {...prev};
+                  Object.keys(updated).forEach(clientId => {
+                    updated[clientId] = updated[clientId].map(m => m.id === msgId ? {...m, deleted: true, text: 'This message was deleted'} : m);
+                  });
+                  return updated;
+                });
+              }
             }
           }
 
@@ -337,7 +366,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                   filename: m.filename,
                   mimetype: m.mimetype,
                   content: m.content || '',
-                  encrypted
+                  encrypted,
+                  replyTo: m.replyTo,
+                  deleted: m.deleted
                 };
 
                 if(m.from_client !== username && currentRoom?.name !== m.room_name && document.hidden) {
@@ -386,14 +417,16 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                   encrypted,
                   file: isFile,
                   filename: m.filename,
-                  mimetype: m.mimetype
+                  mimetype: m.mimetype,
+                  replyTo: m.replyTo,
+                  deleted: m.deleted
                 };
 
                 const peer = m.from_client === username ? m.to_client : m.from_client;
                 if(m.from_client === username){
                   setPrivateMessages(prev => {
                     const list = prev[m.to_client] || [];
-                    const filtered = list.filter(msg => !msg.id.startsWith('local-'));
+                    const filtered = list.filter(msg => !msg.id?.startsWith('local-'));
                     return { ...prev, [m.to_client]: [...filtered, pm] };
                   });
                 } else {
@@ -402,6 +435,19 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                     return { ...prev, [peer]: [...list, pm] };
                   });
                 }
+                break;
+              }
+
+              case 'message_deleted': {
+                const msgId = msg.message_id;
+                setRoomMessages(prev => prev.map(m => m.id === msgId ? {...m, deleted: true, text: 'This message was deleted'} : m));
+                setPrivateMessages(prev => {
+                  const updated = {...prev};
+                  Object.keys(updated).forEach(clientId => {
+                    updated[clientId] = updated[clientId].map(m => m.id === msgId ? {...m, deleted: true, text: 'This message was deleted'} : m);
+                  });
+                  return updated;
+                });
                 break;
               }
 
@@ -455,8 +501,23 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     if(!username || !currentRoom || status !== 'open') return;
     const ts = new Date().toISOString();
     const msgId = `local-${Date.now()}`;
-    setRoomMessages(prev => [...prev, { id: msgId, from_client: username, text, timestamp: ts, public_key: '', content: '', encrypted: false }]);
-    queuedSendMessage({ command: `send_message:${text}`, client_id: username });
+    const messageData = {
+      command: `send_message:${text}`,
+      client_id: username,
+      ...(replyingTo && { replyTo: { id: replyingTo.id!, text: replyingTo.text.substring(0, 50), from_client: replyingTo.from_client } })
+    };
+    setRoomMessages(prev => [...prev, { 
+      id: msgId, 
+      from_client: username, 
+      text, 
+      timestamp: ts, 
+      public_key: '', 
+      content: '', 
+      encrypted: false,
+      replyTo: replyingTo ? { id: replyingTo.id!, text: replyingTo.text.substring(0, 50), from_client: replyingTo.from_client } : undefined
+    }]);
+    setReplyingTo(null);
+    queuedSendMessage(messageData);
   };
 
   const sendPrivateMessage = async (text: string) => {
@@ -467,9 +528,24 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     let key = sharedKeys.current[peer];
     if(!key){ try { key = await getOrCreateSharedKey(peer); } catch {} }
     if(!key){
-      const msg: Message = { from_client: username, to_client: peer, text: text + ' (non criptato)', timestamp: ts, public_key: '', content: '', encrypted: false };
+      const messageData = {
+        command: `send_private:${peer}:${text}`,
+        client_id: username,
+        ...(replyingTo && { replyTo: { id: replyingTo.id!, text: replyingTo.text.substring(0, 50), from_client: replyingTo.from_client } })
+      };
+      const msg: Message = { 
+        from_client: username, 
+        to_client: peer, 
+        text: text + ' (non criptato)', 
+        timestamp: ts, 
+        public_key: '', 
+        content: '', 
+        encrypted: false,
+        replyTo: replyingTo ? { id: replyingTo.id!, text: replyingTo.text.substring(0, 50), from_client: replyingTo.from_client } : undefined
+      };
       setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
-      await queuedSendMessage({ command: `send_private:${peer}:${text}`, client_id: username });
+      setReplyingTo(null);
+      await queuedSendMessage(messageData);
       return;
     }
     const encrypted = await encryptMessage(key, text);
@@ -489,10 +565,20 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       public_key: '',
       content: encrypted,
       encrypted: true,
-      file: false
+      file: false,
+      replyTo: replyingTo ? { id: replyingTo.id!, text: replyingTo.text.substring(0, 50), from_client: replyingTo.from_client } : undefined
     };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), localMsg] }));
-    await queuedSendMessage({ command: `send_private:${peer}:ENC`, client_id: username, encrypted: true, content: encrypted, sk_fingerprint: sk_fp, sender_ecdh_public: sender_pub });
+    setReplyingTo(null);
+    await queuedSendMessage({ 
+      command: `send_private:${peer}:ENC`, 
+      client_id: username, 
+      encrypted: true, 
+      content: encrypted, 
+      sk_fingerprint: sk_fp, 
+      sender_ecdh_public: sender_pub,
+      ...(replyingTo && { replyTo: { id: replyingTo.id!, text: replyingTo.text.substring(0, 50), from_client: replyingTo.from_client } })
+    });
   };
 
   const sendPrivateFile = async (file: File) => {
@@ -502,8 +588,35 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     const content = await toBase64(file);
     const ts = new Date().toISOString();
     const key = await getOrCreateSharedKey(peer).catch(() => undefined);
-    if (!key) { const msg: Message = { from_client: username, to_client: peer, text: file.name + ' (non criptato)', timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false }; setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); return; }
-    const msg: Message = { from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: true };
+    if (!key) { 
+      const msg: Message = { 
+        from_client: username, 
+        to_client: peer, 
+        text: file.name + ' (non criptato)', 
+        timestamp: ts, 
+        public_key: '', 
+        content, 
+        file: true, 
+        filename: file.name, 
+        mimetype: file.type, 
+        encrypted: false 
+      }; 
+      setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); 
+      await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); 
+      return; 
+    }
+    const msg: Message = { 
+      from_client: username, 
+      to_client: peer, 
+      text: file.name, 
+      timestamp: ts, 
+      public_key: '', 
+      content, 
+      file: true, 
+      filename: file.name, 
+      mimetype: file.type, 
+      encrypted: true 
+    };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
     await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content, encrypted: true });
   };
@@ -544,6 +657,19 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     });
   };
 
+  const deleteMessage = (messageId: string) => {
+    if (!username || status !== 'open') return;
+    queuedSendMessage({ command: `delete_message:${messageId}`, client_id: username });
+  };
+
+  const setReply = (message: Message) => {
+    setReplyingTo(message);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+  };
+
   const fetchPrivateMessages = async (clientId: string) => {
     setCurrentRoom(null);
     setCurrentClient(clients.find(c => c.client_id === clientId) || null);
@@ -571,7 +697,12 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       sendPrivateMessage,
       fetchPrivateMessages,
       sendFile,
-      sendPrivateFile
+      sendPrivateFile,
+      deleteMessage,
+      removeLocalMessage,
+      setReply,
+      cancelReply,
+      replyingTo
     }}>
       {children}
     </ChatContext.Provider>

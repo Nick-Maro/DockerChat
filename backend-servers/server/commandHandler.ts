@@ -402,6 +402,7 @@ export class CommandHandler {
                 const mimetype = data?.mimetype; 
                 const content = data?.content;
                 const encrypted = data?.encrypted === true;
+                const replyTo = data?.replyTo;
                 
                 if(!encrypted && !isFile && message_text) {
                     if (this.containsFilteredContent(message_text)) {
@@ -416,7 +417,9 @@ export class CommandHandler {
                 }
                 const room_id = currentClient.room_id;
                 if(room_id){
+                    const messageId = generateUUID();
                     await this.dataManager.addMessageToRoom(room_id, {
+                        id: messageId,
                         from_client: clientId,
                         text: encrypted ? (data?.content || '') : message_text,
                         signature: data.signature,
@@ -427,7 +430,8 @@ export class CommandHandler {
                         filename: filename,
                         mimetype: mimetype,
                         content: content,
-                        encrypted: encrypted
+                        encrypted: encrypted,
+                        replyTo: replyTo
                     });
 
                     const roomClients = await this.dataManager.getRoomClients(room_id);
@@ -437,13 +441,15 @@ export class CommandHandler {
                         if(!otherWs) continue;                
                         const messageData = {
                             event: 'room_message_received',
+                            message_id: messageId,
                             from_client: client_id,
                             room_name: room_id,
                             timestamp: getCurrentISOString(),
                             text: encrypted ? (data?.content || '') : message_text,
                             file: isFile,
                             encrypted: encrypted,
-                            content: encrypted ? (data?.content || '') : (isFile ? content : message_text)
+                            content: encrypted ? (data?.content || '') : (isFile ? content : message_text),
+                            replyTo: replyTo
                         };                       
                         if(isFile){
                             (messageData as any).filename = filename;
@@ -477,6 +483,7 @@ export class CommandHandler {
 
                 const to_client_id = parts[1];
                 let message_text = parts[2];
+                const replyTo = data?.replyTo;
 
                 if(data?.encrypted === true && data?.content) {
                     message_text = data.content;
@@ -495,20 +502,6 @@ export class CommandHandler {
                 }
 
                 const client = await this.dataManager.getClient(to_client_id);
-                try {
-                    const diag = {
-                        from: client_id,
-                        to: to_client_id,
-                        encrypted: data?.encrypted === true,
-                        textLength: message_text.length || undefined,
-                        contentLength: typeof data?.content === 'string' ? data.content.length : undefined,
-                        hasSignature: !!data?.signature,
-                        isFile: data?.file === true
-                    };
-                    printDebug('[CMD] send_private payload diag:' + JSON.stringify(diag), DebugLevel.LOG);
-                }
-                catch(dErr){ printDebug('[CMD] Failed to log send_private diag:' + dErr, DebugLevel.WARN); }
-
                 if (!client) {
                     response.error = "Recipient Client not found";
                     break;
@@ -528,7 +521,8 @@ export class CommandHandler {
                     filename,
                     mimetype,
                     content,
-                    data?.encrypted === true
+                    data?.encrypted === true,
+                    replyTo
                 );
 
                 const messageData = {
@@ -540,7 +534,8 @@ export class CommandHandler {
                     verified: true,
                     file: isFile,
                     message_id: message_id,
-                    encrypted: data?.encrypted === true
+                    encrypted: data?.encrypted === true,
+                    replyTo: replyTo
                 };
 
                 if (isFile) {
@@ -552,12 +547,10 @@ export class CommandHandler {
                 if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
                 if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
 
-                printDebug(`Broadcasting private message from ${client_id} to ${to_client_id}${isFile ? ' (with file)' : ''}`, DebugLevel.LOG);
-
                 const targetWs = wsClientMap.get(to_client_id);
-                    if (targetWs && targetWs.readyState === 1) {
-                        targetWs.send(JSON.stringify(messageData));
-                    }
+                if (targetWs && targetWs.readyState === 1) {
+                    targetWs.send(JSON.stringify(messageData));
+                }
 
                 response = {
                     ...response,
@@ -566,6 +559,73 @@ export class CommandHandler {
                     to_client: to_client_id,
                     file: isFile
                 };
+                break;
+            }
+
+            case command.startsWith("delete_message:"): {
+                const messageId = command.split(":", 2)[1];
+                if (!messageId) {
+                    response.error = "Command format: delete_message:MESSAGE_ID";
+                    break;
+                }
+
+                const room_id = currentClient.room_id;
+                let deleted = false;
+                
+                if (room_id) {
+                    const room = await this.dataManager.getRoom(room_id);
+                    if (room) {
+                        const message = room.messages?.find(m => m.id === messageId);
+                        if (message && message.from_client === clientId) {
+                            message.deleted = true;
+                            message.text = 'This message was deleted';
+                            await storage.setRoom(room_id, room);
+                            
+                            const roomClients = await this.dataManager.getRoomClients(room_id);
+                            for (const otherClientId of roomClients) {
+                                const otherWs = wsClientMap.get(otherClientId);
+                                if (otherWs && otherWs.readyState === 1) {
+                                    otherWs.send(JSON.stringify({
+                                        event: 'message_deleted',
+                                        message_id: messageId,
+                                        room_name: room_id
+                                    }));
+                                }
+                            }
+                            deleted = true;
+                        }
+                    }
+                }
+                
+                if (!deleted) {
+                    const privateMessages = await this.dataManager.getUserPrivateMessages(clientId);
+                    const message = privateMessages.find(m => m.id === messageId && m.from_client === clientId);
+                    if (message) {
+                        message.deleted = true;
+                        message.text = 'This message was deleted';
+                        await this.dataManager.updatePrivateMessage(messageId, message);
+                        
+                        const targetClient = message.to_client === clientId ? message.from_client : message.to_client;
+                        const targetWs = wsClientMap.get(targetClient);
+                        if (targetWs && targetWs.readyState === 1) {
+                            targetWs.send(JSON.stringify({
+                                event: 'message_deleted',
+                                message_id: messageId
+                            }));
+                        }
+                        deleted = true;
+                    }
+                }
+
+                if (deleted) {
+                    response = {
+                        ...response,
+                        message: "Message deleted successfully",
+                        success: true
+                    };
+                } else {
+                    response.error = "Message not found or you don't have permission to delete it";
+                }
                 break;
             }
             case command === "get_private_messages": {
