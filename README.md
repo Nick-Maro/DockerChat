@@ -4,17 +4,20 @@ A comprehensive Docker-based network security infrastructure implementing multip
 > [!WARNING]  
 > Use responsibly and only on networks you own or have permission to analyze. Misuse of this tool may violate laws or terms of service.
 
-
-## Prerequisites
+## System Requirements
+- **RAM**: 2GB recommended (minimum requirements may work with 1GB but not tested)
+- **CPU**: 1 vCPU is sufficient
 - **Docker**: >= 20.x
 - **Docker Compose**: >= 1.29.x
-
 
 ## Quick Start
 ### 1. Clone and Setup
 ```bash
 git clone https://github.com/Nick-Maro/docker-mini-network
 cd docker-mini-network
+
+# Rename the environment template file
+cp .env.template .env
 ```
 
 ### 2. Build and Deploy
@@ -25,7 +28,6 @@ docker compose up --build -d
 # Verify all containers are running
 docker compose ps
 ```
-
 
 ## Configurations
 ### Host File Setup
@@ -42,6 +44,9 @@ Add the following entries to your hosts file:
 127.0.0.1 dashboard.localhost
 127.0.0.1 api.localhost
 ```
+
+### Environment Setup
+Make sure to rename `.env.template` to `.env` before starting the containers. This file contains necessary environment variables for the application to function properly.
 
 ### Useful Docker Commands
 ```bash
@@ -61,6 +66,7 @@ This project implements a complete network security infrastructure with the foll
 - **Programmable Firewall**: Custom rule-based traffic filtering
 - **Dashboard**: Real-time network monitoring interface
 - **Web-client**: Web client for sending files and messages (in development)
+
 The system supports HTTP communication for text messages and uses Docker Compose for container orchestration with bridge networking.
 
 ![Network Graph](graph.jpg)
@@ -83,8 +89,6 @@ I would like to thank all our contributors, who helped make this project possibl
 <a href="https://github.com/Nick-Maro/DockerChat/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=Nick-Maro/DockerChat" />
 </a>
-
-
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
