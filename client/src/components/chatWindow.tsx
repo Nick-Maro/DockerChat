@@ -22,6 +22,10 @@ export const ChatWindow = memo(() => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
   const longPressTimer = useRef<number | null>(null);
+  
+  const chatWindowRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<number | null>(null);
 
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
@@ -30,18 +34,51 @@ export const ChatWindow = memo(() => {
   }, [currentClient, privateMessages, messages]);
 
   useEffect(() => {
-    const timer = setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    return () => clearTimeout(timer);
-  }, [activeMessages.length]);
+    if (!isUserScrolling) {
+      const timer = setTimeout(() => {
+        endRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeMessages.length, isUserScrolling]);
+
+  const handleScroll = useCallback(() => {
+    setIsUserScrolling(true);
+    
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 2000);
+    
+    const chatWindow = chatWindowRef.current;
+    if (chatWindow) {
+      const { scrollTop, scrollHeight, clientHeight } = chatWindow;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      if (isNearBottom) {
+        setIsUserScrolling(false);
+      }
+    }
+  }, []);
 
   const handleLongPressStart = useCallback((msg: Message, e: any) => {
     if (!isMobile) return;
-    e.preventDefault();
+    
     longPressTimer.current = window.setTimeout(() => {
+      e.preventDefault();
       setSelectedMessage(msg);
       if (navigator.vibrate) navigator.vibrate(50);
-    }, 500);
+    }, 600);
   }, [isMobile]);
+
+  const handleTouchMove = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
 
   const handleLongPressEnd = useCallback(() => {
     if (longPressTimer.current) {
@@ -184,7 +221,10 @@ export const ChatWindow = memo(() => {
 
   return (
     <>
-      <div className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
+      <div 
+        ref={chatWindowRef}
+        className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
+        onScroll={handleScroll}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -210,6 +250,7 @@ export const ChatWindow = memo(() => {
               key={msg.id || `fallback-${index}`} 
               className={`${styles.message} ${msg.from_client === username ? styles.sent : styles.received} ${selectedMessage?.id === msg.id ? styles.selected : ''} flex`}
               onTouchStart={isMobile ? (e) => handleLongPressStart(msg, e) : undefined}
+              onTouchMove={isMobile ? handleTouchMove : undefined}
               onTouchEnd={isMobile ? handleLongPressEnd : undefined}
               onMouseEnter={!isMobile ? () => setHoveredMessage(msg.id!) : undefined}
               onMouseLeave={!isMobile ? () => setHoveredMessage(null) : undefined}>
