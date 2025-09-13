@@ -8,8 +8,20 @@
 }
 .noRoom{height: 100dvh; text-align: center;}
 
+.message{
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
 .message.sent{justify-content: flex-end;}
 .message.received{justify-content: flex-start;}
+.message.selected{
+  background: rgba(135, 117, 233, 0.15);
+  border-radius: 8px;
+  margin: -2px 0;
+  padding: 2px 0;
+}
 
 .message.sent p{color: var(--chat-sent-bubble-txt);}
 .message.received p{color: var(--chat-received-bubble-txt);}
@@ -28,8 +40,99 @@
 .message.sent .time{color: var(--chat-sent-bubble-txt);}
 .message.received .time{color: var(--chat-received-bubble-txt);}
 
+.messageMenu{
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
 
-/*** Message Composer ***/
+.sent .messageMenu{
+  left: -5px;
+  right: auto;
+}
+
+.menuButton{
+  background: rgba(0,0,0,0.7);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropdown{
+  position: absolute;
+  top: -5px;
+  right: 30px;
+  background: var(--chat-received-bubble-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 80px;
+  z-index: 20;
+}
+
+.sent .dropdown{
+  left: 30px;
+  right: auto;
+}
+
+.dropdown button{
+  background: none;
+  border: none;
+  color: var(--chat-received-bubble-txt);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.dropdown button:hover{
+  background: rgba(255,255,255,0.1);
+}
+
+.mobileActions{
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  z-index: 100;
+  animation: fadeInUp 0.2s ease;
+  display: flex;
+  gap: 10px;
+}
+
+.replyButton{
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.cancelButton{
+  background: #666;
+  color: white;
+  border: none;
+  padding: 12px 15px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  width: 40px;
+  height: 40px;
+}
+
+
 
 .messageComposer{
   height: 65px;
@@ -59,7 +162,6 @@
 .messageComposer .icon.send:hover img{transform: translateX(1px) translateY(-1px) rotate(-385deg); transition: .5s;}
 
 
-/*** Messages ***/
 
 .dragOverlay{
   width: calc(100dvw - 30px); height: calc(100dvh - 30px);
@@ -85,3 +187,18 @@
 
 .fileMessage{gap: 5px;}
 .messageText{word-break: break-word;}
+
+@keyframes fadeInUp{
+  from{opacity: 0; transform: translateY(20px);}
+  to{opacity: 1; transform: translateY(0);}
+}
+
+@media (max-width: 768px){
+  .messageComposer input{
+    font-size: 16px !important;
+  }
+  
+  .messageMenu{
+    display: none;
+  }
+}
