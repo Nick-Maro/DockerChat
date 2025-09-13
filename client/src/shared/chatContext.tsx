@@ -169,7 +169,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 const room = rooms.find(r => r.name === msg.room_name);
                 if(room){
                   setCurrentRoom(room);
-                  setRoomMessages([]);
+                  setCurrentClient(null);
                   await queuedSendMessage({ command: 'get_messages', client_id: username });
                 }
               }
@@ -177,6 +177,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
             else if (msg.command === 'get_messages') {
               const list = msg.messages || [];
               const newMessages = [];
+              
+              processedMessageIds.current.clear();
+              
               for (const m of list) {
                 const msgId = m.id || `${m.room || 'unknown'}:${m.timestamp || Date.now()}:${m.from || m.from_client}`;
                 if(processedMessageIds.current.has(msgId)) continue;
@@ -211,7 +214,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 };
                 newMessages.push(roomMsg);
               }
-              setRoomMessages(prev => [...prev, ...newMessages]);
+              setRoomMessages(newMessages);
             } else if (msg.command === 'get_private_messages') {
               const clientId = currentClient?.client_id;
               if(!clientId) return;
