@@ -239,4 +239,124 @@ export class DataManager {
         const clientIds = await storage.getRoomClients(roomId);
         return await storage.getBatchClientECDHKeys(clientIds);
     }
+
+    // to fix
+    async deletePrivateMessage(messageId: string, requestingClientId?: string): Promise<{ success: boolean; error?: string; message?: string }> {
+        try {
+            if(!messageId || typeof messageId !== 'string' || messageId.trim() === ''){
+                return {
+                    success: false,
+                    error: 'INVALID_MESSAGE_ID',
+                    message: 'ID messaggio non valido'
+                };
+            }
+
+            const trimmedMessageId = messageId.trim();
+
+            if (requestingClientId) {
+                const privateMessages = await storage.getPrivateMessages();
+                const messageToDelete = privateMessages[trimmedMessageId];
+                
+                if(!messageToDelete){
+                    return {
+                        success: false,
+                        error: 'MESSAGE_NOT_FOUND',
+                        message: 'Messaggio non trovato'
+                    };
+                }
+
+                const isAuthorized = messageToDelete.from_client === requestingClientId || messageToDelete.to_client === requestingClientId;
+                
+                if(!isAuthorized){
+                    return {
+                        success: false,
+                        error: 'UNAUTHORIZED',
+                        message: 'Non autorizzato a eliminare questo messaggio'
+                    };
+                }
+
+                const requestingClient = await storage.getClient(requestingClientId);
+                if(!requestingClient){
+                    return {
+                        success: false,
+                        error: 'CLIENT_NOT_FOUND',
+                        message: 'Client richiedente non trovato'
+                    };
+                }
+
+                await this.updateClientLastSeen(requestingClientId);
+            }
+
+            const deletionResult = await storage.deletePrivateMessage(trimmedMessageId);
+
+            if(deletionResult){
+                return {
+                    success: true,
+                    message: 'Message delete successfully'
+                };
+            }
+            else {
+                return {
+                    success: false,
+                    error: 'DELETION_FAILED',
+                    message: 'Impossibile eliminare il messaggio. Potrebbe non esistere.'
+                };
+            }
+
+        }
+        catch(error){
+            console.error(`[ERROR] DataManager.deletePrivateMessage failed: ${error}`);
+            return {
+                success: false,
+                error: 'INTERNAL_ERROR',
+                message: 'Errore interno durante l\'eliminazione del messaggio'
+            };
+        }
+    }
+
+    async deleteMultiplePrivateMessages(messageIds: string[], requestingClientId?: string): Promise<{ 
+        success: boolean; 
+        deletedCount: number; 
+        failedCount: number; 
+        errors: Array<{ messageId: string; error: string }> 
+    }> {
+        const results = {
+            success: true,
+            deletedCount: 0,
+            failedCount: 0,
+            errors: [] as Array<{ messageId: string; error: string }>
+        };
+
+        if(!messageIds || messageIds.length === 0){
+            results.success = false;
+            results.errors.push({ messageId: '', error: 'Nessun ID messaggio fornito' });
+            return results;
+        }
+
+        if(requestingClientId) await this.updateClientLastSeen(requestingClientId);
+
+        for(const messageId of messageIds){
+            try {
+                const result = await this.deletePrivateMessage(messageId, requestingClientId);
+                if (result.success) {
+                    results.deletedCount++;
+                } else {
+                    results.failedCount++;
+                    results.errors.push({ 
+                        messageId, 
+                        error: result.error || result.message || 'Errore sconosciuto' 
+                    });
+                }
+            } catch (error) {
+                results.failedCount++;
+                results.errors.push({ 
+                    messageId, 
+                    error: `Errore durante l'eliminazione: ${error}` 
+                });
+            }
+        }
+
+        if(results.failedCount > 0) results.success = false;
+        return results;
+    }
 }

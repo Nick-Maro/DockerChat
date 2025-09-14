@@ -9,7 +9,7 @@ import attachWhite from '../assets/icons/attach-white.svg';
 import sendWhite from '../assets/icons/send-white.svg';
 
 export const ChatWindow = memo(() => {
-  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage, sendPrivateFile } = useChat();
+  const { currentRoom, currentClient, messages, privateMessages, sendMessage, sendFile, sendPrivateMessage, sendPrivateFile, deletePrivateMessage } = useChat();
   const { username } = useClient();
   
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +62,13 @@ export const ChatWindow = memo(() => {
       }
     }
   }, []);
+
+
+  const handleDelete = useCallback((messageId: string) => {
+    deletePrivateMessage(messageId);
+    setSelectedMessage(null);
+    setShowDropdown(null);
+  }, [deletePrivateMessage]);
 
   const handleLongPressStart = useCallback((msg: Message, e: any) => {
     if (!isMobile) return;
@@ -278,6 +285,7 @@ export const ChatWindow = memo(() => {
                   {showDropdown === msg.id && (
                     <div className={styles.dropdown}>
                       <button onClick={handleReply}>Reply</button>
+                      <button onClick={() => handleDelete(msg.id)}>Delete</button>
                     </div>
                   )}
                 </div>

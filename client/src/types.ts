@@ -38,6 +38,7 @@ export type ChatContextType = {
   fetchPrivateMessages: (clientId: string) => void;
   sendFile: (file: File) => void;
   sendPrivateFile: (file: File) => void;
+  deletePrivateMessage: (messageId: string) => Promise<void>;
 };
 
 export interface WSResponse {

@@ -553,6 +553,30 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const createRoom = (name: string) => {
     queuedSendMessage({ command: `create_room:${name}`, client_id: username });
   };
+  
+  const deletePrivateMessage = async (messageId: string) => {
+    if (!username || !currentClient) return;
+    const peer = currentClient.client_id;
+    const messageToDelete = privateMessages[peer]?.find(m => m.id === messageId);
+
+    setPrivateMessages(prev => {
+        const list = prev[peer] || [];
+        return { ...prev, [peer]: list.filter(m => m.id !== messageId) };
+    });
+
+    try{ await queuedSendMessage({command: `delete_private_message:${messageId}`, client_id: username}); }
+    catch(error){
+        console.error('Failed to delete message:', error);
+        
+        if(messageToDelete){
+            setPrivateMessages(prev => {
+                const list = prev[peer] || [];
+                return { ...prev, [peer]: [...list, messageToDelete].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                };
+            });
+        }
+    }
+  };
 
   return (
     <ChatContext.Provider value={{
@@ -571,7 +595,8 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       sendPrivateMessage,
       fetchPrivateMessages,
       sendFile,
-      sendPrivateFile
+      sendPrivateFile,
+      deletePrivateMessage
     }}>
       {children}
     </ChatContext.Provider>
