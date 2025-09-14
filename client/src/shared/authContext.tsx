@@ -19,13 +19,11 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [usernamePromptReason, setUsernamePromptReason] = useState<string>('');
 
-  // open modal to ask for username
   const promptForUsername = (reason: string = 'Enter a username') => {
     setUsernamePromptReason(reason);
     setShowUsernameModal(true);
   };
 
-  // submit handler for username modal
   const handleUsernameSubmit = async (newUsername: string) => {
     setShowUsernameModal(false);
     localStorage.setItem('username', newUsername);
@@ -34,10 +32,8 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     setUsername(newUsername);
   };
 
-
   const handleUsernameCancel = () => {
     setShowUsernameModal(false);
-    // If there's no username and the user cancels, stay in loading
     if (!username) {
       setLoading(true);
     }
@@ -79,8 +75,9 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     }
 
     if(lastMessage.command === 'heartbeat'){
-      if(lastMessage.error && lastMessage.error.includes('not found')){
+      if(lastMessage.error){
         localStorage.removeItem('username');
+        setUsername(null);
         promptForUsername('Session expired. Please re-enter your username.');
       }
       else{
