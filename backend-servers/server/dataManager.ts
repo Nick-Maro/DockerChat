@@ -1,7 +1,7 @@
-import { storage } from './storage';
-import { CONFIG } from './config';
-import { isExpired, generateUUID, getCurrentISOString } from './utils/utils.ts';
-import type { Message, PrivateMessage, ClientInRoom, Client, Room } from './types';
+import {storage} from './storage';
+import {CONFIG} from './config';
+import {DebugLevel, generateUUID, getCurrentISOString, isExpired, printDebug} from './utils/utils.ts';
+import type {Client, ClientInRoom, Message, PrivateMessage, Room} from './types';
 
 export class DataManager {
     private cleanupLock = false;
@@ -247,7 +247,7 @@ export class DataManager {
                 return {
                     success: false,
                     error: 'INVALID_MESSAGE_ID',
-                    message: 'ID messaggio non valido'
+                    message: 'Message ID not valid'
                 };
             }
 
@@ -257,30 +257,29 @@ export class DataManager {
                 const privateMessages = await storage.getPrivateMessages();
                 const messageToDelete = privateMessages[trimmedMessageId];
                 
-                if(!messageToDelete){
+                if (!messageToDelete) {
                     return {
                         success: false,
                         error: 'MESSAGE_NOT_FOUND',
-                        message: 'Messaggio non trovato'
+                        message: 'Message not found'
                     };
                 }
 
-                const isAuthorized = messageToDelete.from_client === requestingClientId || messageToDelete.to_client === requestingClientId;
-                
-                if(!isAuthorized){
+                const isAuthorized = messageToDelete.from_client === requestingClientId;
+                if (!isAuthorized){
                     return {
                         success: false,
                         error: 'UNAUTHORIZED',
-                        message: 'Non autorizzato a eliminare questo messaggio'
+                        message: "You don't have permission for do this"
                     };
                 }
 
                 const requestingClient = await storage.getClient(requestingClientId);
-                if(!requestingClient){
+                if (!requestingClient){
                     return {
                         success: false,
                         error: 'CLIENT_NOT_FOUND',
-                        message: 'Client richiedente non trovato'
+                        message: 'Client not found'
                     };
                 }
 
@@ -289,27 +288,24 @@ export class DataManager {
 
             const deletionResult = await storage.deletePrivateMessage(trimmedMessageId);
 
-            if(deletionResult){
+            if (deletionResult){
                 return {
                     success: true,
                     message: 'Message delete successfully'
                 };
-            }
-            else {
+            } else {
                 return {
                     success: false,
                     error: 'DELETION_FAILED',
-                    message: 'Impossibile eliminare il messaggio. Potrebbe non esistere.'
+                    message: 'Failed message deletion: the message probably not exists.'
                 };
             }
-
-        }
-        catch(error){
-            console.error(`[ERROR] DataManager.deletePrivateMessage failed: ${error}`);
+        } catch(error){
+            printDebug(`[ERROR] DataManager.deletePrivateMessage failed: ${error}`, DebugLevel.ERROR);
             return {
                 success: false,
                 error: 'INTERNAL_ERROR',
-                message: 'Errore interno durante l\'eliminazione del messaggio'
+                message: "Error during message deletion"
             };
         }
     }
