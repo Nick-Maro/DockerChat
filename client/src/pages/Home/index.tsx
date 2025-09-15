@@ -27,7 +27,6 @@ export function Home(){
 			<section className={`${styles.sidebar} ${(currentRoom || currentClient) ? styles.hideSidebar : ''}`}>
 				<div className={`${styles.profile} flex`}>
 					<Avatar username={myUsername} />
-					<img src={`https://avatar.iran.liara.run/public?username=${myUsername}`} alt="pfp" />
 					<div className={`${styles.name} center-flex column`}>
 						<h2>{myUsername}</h2>
 						<p>My Account</p>
