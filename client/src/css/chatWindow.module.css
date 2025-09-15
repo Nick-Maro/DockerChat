@@ -180,6 +180,105 @@
   height: 40px;
 }
 
+.messageWithReply{
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.replyIndicator{
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.replyLine{
+  width: 3px;
+  height: 100%;
+  min-height: 20px;
+  background: var(--primary-color);
+  border-radius: 2px;
+  margin-top: 2px;
+}
+
+.replyText{
+  font-size: 11px;
+  opacity: 0.8;
+  font-style: italic;
+  margin: 0;
+  flex: 1;
+}
+
+.replyPreview {
+  position: fixed;
+  bottom: 65px; 
+  left: 18.7%;
+  right: 0;
+  background: var(--chat-received-bubble-bg);
+  border-top: 1px solid var(--border);
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: fadeInUp 0.2s ease;
+  z-index: 50;
+}
+
+.replyPreviewContent{
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+}
+
+.replyPreviewLine{
+  width: 3px;
+  height: 35px;
+  background: var(--primary-color);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.replyPreviewText{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.replyPreviewUser{
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary-color);
+}
+
+.replyPreviewMessage{
+  font-size: 12px;
+  opacity: 0.7;
+  color: var(--text-color);
+}
+
+.cancelReplyButton{
+  background: none;
+  border: none;
+  color: var(--text-color);
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 5px;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+}
+
+.cancelReplyButton:hover{
+  opacity: 1;
+}
+
 .messageComposer{
   height: 65px;
   gap: 10px;
@@ -302,7 +401,9 @@
   touch-action: pan-y;
   margin: 0;
 }
-
+.chatWindow.hasReply {
+  padding-bottom: 60px; 
+}
 .errorUpload{
   position: fixed;
   bottom: 90px;
@@ -327,18 +428,11 @@
 }
 
 @media (max-width: 768px){
-  .chatWindow{
-    -webkit-overflow-scrolling: touch !important;
-    overflow-y: scroll !important;
+  .chatWindow {
     height: calc(100vh - 80px - 65px);
     height: calc(var(--vh, 1vh) * 100 - 80px - 65px);
-    contain: layout style;
-    isolation: isolate;
-    padding: 8px;
-    gap: 6px;
-    scroll-behavior: smooth;
-    overscroll-behavior-y: contain;
-    position: relative;
+    margin-bottom: 0;
+    padding-bottom: 0;
   }
   
   .message{
@@ -362,16 +456,25 @@
   .bubble a{
     pointer-events: auto;
   }
+
+  .replyPreview {
+    left: 0; 
+    padding: 8px 10px;
+    bottom: 65px; 
+  }
   
-  .messageComposer{
+  .messageComposer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     height: 65px;
     min-height: 65px;
     flex-shrink: 0;
     padding: 0 10px;
-    position: sticky;
-    bottom: 0;
     background-color: #1e1e1e;
     border-top: 0.5px solid var(--border);
+    z-index: 49;
   }
   
   .messageComposer input{
@@ -389,5 +492,8 @@
   .noRoom{
     height: 100vh;
     height: calc(var(--vh, 1vh) * 100);
+  }
+    .chatWindow.hasReply {
+    padding-bottom: 50px; 
   }
 }

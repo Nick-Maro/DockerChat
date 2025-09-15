@@ -18,6 +18,7 @@ export const ChatWindow = memo(() => {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
   const [hoveredMessage, setHoveredMessage] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
@@ -96,13 +97,16 @@ export const ChatWindow = memo(() => {
 
   const handleReply = useCallback(() => {
     const msg = selectedMessage || activeMessages.find(m => m.id === showDropdown);
-    if (!msg || !inputRef.current) return;
-    const replyText = `Reply to "${msg.text.substring(0, 30)}...": `;
-    inputRef.current.focus();
-    inputRef.current.value = replyText;
+    if (!msg) return;
+    setReplyingTo(msg);
+    if (inputRef.current) inputRef.current.focus();
     setSelectedMessage(null);
     setShowDropdown(null);
   }, [selectedMessage, showDropdown, activeMessages]);
+
+  const cancelReply = useCallback(() => {
+    setReplyingTo(null);
+  }, []);
 
   const stopEvent = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -159,21 +163,31 @@ export const ChatWindow = memo(() => {
     const text = inputRef.current?.value?.trim();
     if(!text) return;
     
+    let messageText = text;
+    if (replyingTo) {
+      const replyPrefix = `@${replyingTo.from_client}: ${replyingTo.text.substring(0, 50)}${replyingTo.text.length > 50 ? '...' : ''}\n\n`;
+      messageText = replyPrefix + text;
+    }
+    
     if(currentRoom){
-      sendMessage(text);
+      sendMessage(messageText);
     } else if(currentClient){
-      sendPrivateMessage(text);
+      sendPrivateMessage(messageText);
     }
     
     if(inputRef.current) inputRef.current.value = '';
-  }, [currentRoom, currentClient, sendMessage, sendPrivateMessage]);
+    setReplyingTo(null);
+  }, [currentRoom, currentClient, sendMessage, sendPrivateMessage, replyingTo]);
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     if(event.key === 'Enter' && !event.shiftKey){
       event.preventDefault();
       handleSendMessage();
     }
-  }, [handleSendMessage]);
+    if(event.key === 'Escape' && replyingTo){
+      cancelReply();
+    }
+  }, [handleSendMessage, replyingTo, cancelReply]);
 
   const openFileDialog = useCallback(() => fileInputRef.current?.click(), []);
   
@@ -214,6 +228,23 @@ export const ChatWindow = memo(() => {
       }
     }
     
+    const lines = msg.text.split('\n');
+    const isReply = lines[0].startsWith('@') && lines.length > 2 && lines[1] === '';
+    
+    if (isReply) {
+      const replyLine = lines[0];
+      const messageContent = lines.slice(2).join('\n');
+      return (
+        <div className={styles.messageWithReply}>
+          <div className={styles.replyIndicator}>
+            <div className={styles.replyLine}></div>
+            <p className={styles.replyText}>{replyLine}</p>
+          </div>
+          <p className={styles.messageText}>{messageContent}</p>
+        </div>
+      );
+    }
+    
     return <p className={styles.messageText}>{msg.text}</p>;
   }, []);
 
@@ -230,7 +261,7 @@ export const ChatWindow = memo(() => {
     <>
       <div 
         ref={chatWindowRef}
-        className={`${styles.chatWindow} flex column ${isDragOver ? styles.dragOver : ''}`}
+        className={`${styles.chatWindow} ${replyingTo ? styles.hasReply : ''} flex column ${isDragOver ? styles.dragOver : ''}`}
         onScroll={handleScroll}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
@@ -313,6 +344,19 @@ export const ChatWindow = memo(() => {
         </div>
       )}
 
+      {replyingTo && (
+        <div className={styles.replyPreview}>
+          <div className={styles.replyPreviewContent}>
+            <div className={styles.replyPreviewLine}></div>
+            <div className={styles.replyPreviewText}>
+              <span className={styles.replyPreviewUser}>Replying to {replyingTo.from_client}</span>
+              <span className={styles.replyPreviewMessage}>{replyingTo.text.substring(0, 50)}{replyingTo.text.length > 50 ? '...' : ''}</span>
+            </div>
+          </div>
+          <button onClick={cancelReply} className={styles.cancelReplyButton}>✕</button>
+        </div>
+      )}
+
       <div className={`${styles.messageComposer} center-flex`}>
         <div className={[styles.icon, styles.attach, 'center-flex'].join(' ')} onClick={openFileDialog} title="Attach file">
           <img src={attachWhite} alt="attach" />
@@ -322,7 +366,7 @@ export const ChatWindow = memo(() => {
         <input 
           ref={inputRef}
           type="text"
-          placeholder={currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`}
+          placeholder={replyingTo ? `Reply to ${replyingTo.from_client}...` : (currentRoom ? "Type a message..." : `Message ${currentClient?.client_id}...`)}
           onKeyPress={handleKeyPress}
           style={{ fontSize: isMobile ? '16px' : '12px' }}
         />
