@@ -1,7 +1,6 @@
 import { render } from 'preact';
 import { LocationProvider, Router, Route } from 'preact-iso';
 import './style.css';
-
 // providers
 import { ClientProvider, useClient } from './shared/authContext.js';
 import { ChatProvider } from './shared/chatContext.js';

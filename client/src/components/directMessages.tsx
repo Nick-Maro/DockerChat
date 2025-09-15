@@ -3,6 +3,7 @@ import { useChat } from '../shared/chatContext';
 import { useUnread } from '../shared/unreadMessagesContext';
 import { formatDateTime } from '../shared/utils';
 import { Client } from '../types';
+import Avatar from './avatar';
 
 export default function DirectMessages() {
     const { clients, currentClient, setCurrentClient, leaveRoom, fetchPrivateMessages } = useChat();
@@ -48,7 +49,7 @@ export default function DirectMessages() {
                         <li className={`${styles.client} ${currentClient === client ? styles.active : ''} ${hasUnread ? styles.hasUnread : ''}`}
                             key={client.client_id} onClick={() => selectClient(client)}>
                             {client.online ? <span className={styles.onlineBadge}></span> : undefined}
-                            <img src={`https://avatar.iran.liara.run/public?username=${client.client_id}`} alt="pfp" />
+                            <Avatar username={client.client_id} />
                             <div className={styles.info}>
                                 <div className={styles.nameContainer}>
                                     <div className={styles.nameWithBadge}>
