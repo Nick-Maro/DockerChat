@@ -6,6 +6,7 @@ import { useUnread } from "./unreadMessagesContext";
 import { Room, ChatContextType, Message, Client } from "../types";
 import { getOrCreatePublicKey, sendAuthenticatedMessage } from "./utils";
 import { generateECDHKeyPair, deriveSharedKey, encryptMessage, decryptMessage, fingerprintKey, getLocalECDHPublic } from "./cryptoHelpers";
+import { indexedDBHelper } from "./indexedDBHelper";
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
@@ -80,19 +81,29 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   const getOrCreateSharedKey = useCallback(async (peer: string) : Promise<CryptoKey | undefined> => {
     if(!peer || peer === username) return undefined;
     if(sharedKeys.current[peer]) return sharedKeys.current[peer];
-    const persisted = localStorage.getItem(`ecdh_peer:${peer}`);
-    if(persisted){
-      try{
-        const k = await deriveSharedKey(persisted);
-        sharedKeys.current[peer] = k;
-        return k;
+    
+    try {
+      const persisted = await indexedDBHelper.getECDHKey(peer);
+      if(persisted){
+        try{
+          const k = await deriveSharedKey(persisted);
+          sharedKeys.current[peer] = k;
+          return k;
+        }
+        catch(e){ console.warn('deriveSharedKey(persisted) failed', e); }
       }
-      catch(e){ console.warn('deriveSharedKey(persisted) failed', e); }
+    } catch (e) {
+      console.warn('Failed to get ECDH key from IndexedDB', e);
     }
+    
     try{
       const remote = await requestPeerEcdh(peer);
       if(remote){
-        try{ localStorage.setItem(`ecdh_peer:${peer}`, remote); } catch { }
+        try{ 
+          await indexedDBHelper.setECDHKey(peer, remote);
+        } catch (e) {
+          console.warn('Failed to store ECDH key in IndexedDB', e);
+        }
         const k = await deriveSharedKey(remote);
         sharedKeys.current[peer] = k;
         return k;
@@ -105,7 +116,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     if(!payload) return { text: '', ok: false };
     if(sender_ecdh_public){
       try{
-        try{ localStorage.setItem(`ecdh_peer:${peer}`, sender_ecdh_public); } catch {}
+        try{ 
+          await indexedDBHelper.setECDHKey(peer, sender_ecdh_public);
+        } catch (e) {
+          console.warn('Failed to store ECDH key in IndexedDB', e);
+        }
         const derived = await deriveSharedKey(sender_ecdh_public);
         sharedKeys.current[peer] = derived;
       } catch { }
@@ -279,7 +294,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               case 'client_ecdh_updated':
                 if(msg.ecdh_key && msg.client_id) {
                   try {
-                    localStorage.setItem(`ecdh_peer:${msg.client_id}`, msg.ecdh_key);
+                    await indexedDBHelper.setECDHKey(msg.client_id, msg.ecdh_key);
                     const derived = await deriveSharedKey(msg.ecdh_key);
                     sharedKeys.current[msg.client_id] = derived;
                   } catch(e) {
@@ -407,7 +422,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
               case 'get_ecdh_key':
                 if(msg.ecdh_key && msg.target_user){
-                  try{ localStorage.setItem(`ecdh_peer:${msg.target_user}`, msg.ecdh_key); } catch {}
+                  try{ 
+                    await indexedDBHelper.setECDHKey(msg.target_user, msg.ecdh_key);
+                  } catch (e) {
+                    console.warn('Failed to store ECDH key in IndexedDB', e);
+                  }
                   try{ const k = await deriveSharedKey(msg.ecdh_key); sharedKeys.current[msg.target_user] = k; } catch {}
                   if (pendingEcdh.current[msg.target_user]) pendingEcdh.current[msg.target_user](msg.ecdh_key);
                 }
@@ -425,7 +444,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       (async () => {
         try {
           await getOrCreatePublicKey();
-          const existing = localStorage.getItem('ecdh_private');
+          const existing = await indexedDBHelper.getItem('ecdh_private');
           if(!existing){
             const pub = await generateECDHKeyPair();
             await queuedSendMessage({ command: 'upload_ecdh_key', username, ecdh_key: pub, client_id: username });

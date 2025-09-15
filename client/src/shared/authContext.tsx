@@ -4,6 +4,7 @@ import { getOrCreatePublicKey, sendAuthenticatedMessage } from './utils';
 import { useSocket } from './webSocketContext';
 import { ClientContextType } from '../types';
 import UsernameModal from '../components/UsernameModal';
+import { indexedDBHelper } from './indexedDBHelper';
 
 const ClientContext = createContext<ClientContextType | null>(null);
 
@@ -26,7 +27,11 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
 
   const handleUsernameSubmit = async (newUsername: string) => {
     setShowUsernameModal(false);
-    localStorage.setItem('username', newUsername);
+    try {
+      await indexedDBHelper.setItem('username', newUsername);
+    } catch (e) {
+      console.warn('Failed to store username in IndexedDB:', e);
+    }
     const publicKey = await getOrCreatePublicKey();
     sendMessage({ command: "upload_public_key", username: newUsername, public_key: publicKey });
     setUsername(newUsername);
@@ -43,7 +48,13 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     if(status !== "open") return;
     
     (async () => {
-      const savedUsername = localStorage.getItem('username');
+      let savedUsername: string | null = null;
+      try {
+        savedUsername = await indexedDBHelper.getItem('username');
+      } catch (e) {
+        console.warn('Failed to get username from IndexedDB:', e);
+      }
+      
       const publicKey = await getOrCreatePublicKey();
       
       if(!savedUsername){
@@ -52,7 +63,11 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
       }
       
       if(!validateUsername(savedUsername)) {
-        localStorage.removeItem('username');
+        try {
+          await indexedDBHelper.removeItem('username');
+        } catch (e) {
+          console.warn('Failed to remove username from IndexedDB:', e);
+        }
         promptForUsername('Saved username is no longer valid. Please enter a new one.');
         return;
       }
@@ -68,7 +83,13 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
     const lastMessage = messages[messages.length - 1];
     
     if(typeof lastMessage.command === 'string' && lastMessage.command === "upload_public_key" && lastMessage.client_id){
-      localStorage.setItem('username', lastMessage.client_id);
+      (async () => {
+        try {
+          await indexedDBHelper.setItem('username', lastMessage.client_id);
+        } catch (e) {
+          console.warn('Failed to store username in IndexedDB:', e);
+        }
+      })();
       setUsername(lastMessage.client_id);
       setLoading(false);
       return;
@@ -76,14 +97,26 @@ export const ClientProvider = ({ children }: { children: ComponentChildren }) =>
 
     if(lastMessage.command === 'heartbeat'){
       if(lastMessage.error){
-        localStorage.removeItem('username');
+        (async () => {
+          try {
+            await indexedDBHelper.removeItem('username');
+          } catch (e) {
+            console.warn('Failed to remove username from IndexedDB:', e);
+          }
+        })();
         setUsername(null);
         promptForUsername('Session expired. Please re-enter your username.');
       }
       else{
-        const id = localStorage.getItem('username');
-        if(id) setUsername(id);
-        setLoading(false);
+        (async () => {
+          try {
+            const id = await indexedDBHelper.getItem('username');
+            if(id) setUsername(id);
+          } catch (e) {
+            console.warn('Failed to get username from IndexedDB:', e);
+          }
+          setLoading(false);
+        })();
       }
     }
   }, [messages]);
