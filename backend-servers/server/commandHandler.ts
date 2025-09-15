@@ -696,25 +696,22 @@ export class CommandHandler {
                     break;
                 }
 
+                const messageIdTrim = messageId.trim();
                 try {
-                    const deletionResult = await this.dataManager.deletePrivateMessage(messageId.trim(), client_id);
-                    
+                    const deletionResult = await this.dataManager.deletePrivateMessage(messageIdTrim, client_id);
+
                     if (deletionResult.success) {
                         response = {
                             ...response,
-                            message: deletionResult.message || "Messaggio eliminato con successo",
-                            message_id: messageId.trim(),
-                            action: "deleted"
+                            message: deletionResult.message || "Message deleted",
+                            message_id: messageId.trim()
                         };
                         
                         try {
                             const allMessages = await this.dataManager.getPrivateMessages();
                             const deletedMessage = Object.values(allMessages).find(msg => msg.id === messageId.trim());
                             if (deletedMessage) {
-                                const otherClientId = deletedMessage.from_client === client_id 
-                                    ? deletedMessage.to_client 
-                                    : deletedMessage.from_client;
-                                
+                                const otherClientId = deletedMessage.from_client === client_id ? deletedMessage.to_client : deletedMessage.from_client;
                                 const otherWs = wsClientMap.get(otherClientId);
                                 if (otherWs && otherWs.readyState === 1) {
                                     otherWs.send(JSON.stringify({
@@ -725,8 +722,9 @@ export class CommandHandler {
                                     }));
                                 }
                             }
+                        } catch (notifyError) {
+                            printDebug(`[CMD] Failed to notify other client about message deletion: ${notifyError}`, DebugLevel.WARN);
                         }
-                        catch(notifyError){ printDebug(`[CMD] Failed to notify other client about message deletion: ${notifyError}`, DebugLevel.WARN); }
                         
                         printDebug(`[CMD] Message ${messageId.trim()} deleted by ${client_id}`, DebugLevel.INFO);
                     } else {
@@ -743,8 +741,7 @@ export class CommandHandler {
                                 printDebug(`[CMD] Delete failed: ${deletionResult.error} for message ${messageId} by ${client_id}`, DebugLevel.WARN);
                         }
                     }
-                }
-                catch(error){
+                } catch(error) {
                     response.error = "Errore interno durante l'eliminazione del messaggio";
                     printDebug(`[CMD] Unexpected error in delete_private_message: ${error}`, DebugLevel.ERROR);
                 }
