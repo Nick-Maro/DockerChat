@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Login</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .login-wrapper {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .login-container {
+            max-width: 450px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .login-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+        }
+        
+        .login-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #007bff, #0056b3, #6610f2);
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .login-title {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            color: #fff;
+            font-weight: 300;
+            position: relative;
+        }
+        
+        .login-title i {
+            color: #007bff;
+            margin-bottom: 1rem;
+            display: block;
+            font-size: 3rem;
+        }
+        
+        .login-title h2 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+        
+        .login-title p {
+            margin: 0.5rem 0 0 0;
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+        
+        .form-floating {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-floating .form-control {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            height: 60px;
+            transition: all 0.3s ease;
+        }
+        
+        .form-floating .form-control:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+            color: #fff;
+        }
+        
+        .form-floating .form-control::placeholder {
+            color: transparent;
+        }
+        
+        .form-floating label {
+            color: #aaa;
+            font-weight: 500;
+        }
+        
+        .form-floating .form-control:focus ~ label,
+        .form-floating .form-control:not(:placeholder-shown) ~ label {
+            color: #007bff;
+        }
+        
+        .login-btn {
+            width: 100%;
+            height: 55px;
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+        
+        .login-btn:hover {
+            background: linear-gradient(45deg, #0056b3, #004085);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
+        }
+        
+        .login-btn:active {
+            transform: translateY(0);
+        }
+        
+        .login-btn i {
+            margin-right: 0.5rem;
+        }
+        
+        .alert {
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: none;
+            font-weight: 500;
+        }
+        
+        .alert-danger {
+            background: rgba(220, 53, 69, 0.15);
+            color: #ff6b7d;
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+        
+        .alert-info {
+            background: rgba(23, 162, 184, 0.15);
+            color: #17a2b8;
+            border: 1px solid rgba(23, 162, 184, 0.3);
+        }
+        
+        .alert-success {
+            background: rgba(40, 167, 69, 0.15);
+            color: #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+        
+        .security-note {
+            text-align: center;
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 12px;
+            font-size: 0.85rem;
+            color: #ffc107;
+        }
+        
+        .security-note i {
+            margin-right: 0.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .login-container {
+                margin: 1rem;
+                padding: 2rem 1.5rem;
+            }
+            
+            .login-title h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-container">
+            <div class="login-title">
+                <i class="fas fa-shield-alt"></i>
+                <h2>Security Dashboard</h2>
+                <p>Access Control Center</p>
+            </div>
+            
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }}">
+                            <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'info-circle' }}"></i>
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <form method="POST">
+                <div class="form-floating">
+                    <input type="text" 
+                           class="form-control" 
+                           id="username" 
+                           name="username" 
+                           placeholder="Username"
+                           autocomplete="username"
+                           required>
+                    <label for="username">
+                        <i class="fas fa-user me-2"></i>Username
+                    </label>
+                </div>
+                
+                <div class="form-floating">
+                    <input type="password" 
+                           class="form-control" 
+                           id="password" 
+                           name="password" 
+                           placeholder="Password"
+                           autocomplete="current-password"
+                           required>
+                    <label for="password">
+                        <i class="fas fa-lock me-2"></i>Password
+                    </label>
+                </div>
+                
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Access Dashboard
+                </button>
+            </form>
+            
+            <div class="security-note">
+                <i class="fas fa-info-circle"></i>
+                Secure authentication required for dashboard access
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
