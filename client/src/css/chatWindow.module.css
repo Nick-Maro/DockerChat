@@ -12,10 +12,7 @@
   will-change: scroll-position;
 }
 
-.noRoom{
-  height: 100dvh; 
-  text-align: center;
-}
+.noRoom{height: 100dvh; text-align: center;}
 
 .message{
   -webkit-tap-highlight-color: transparent;
@@ -25,13 +22,8 @@
   transform: translateZ(0);
 }
 
-.message.sent{
-  justify-content: flex-end;
-}
-
-.message.received{
-  justify-content: flex-start;
-}
+.message.sent{justify-content: flex-end;}
+.message.received{justify-content: flex-start;}
 
 .message.selected{
   background: rgba(135, 117, 233, 0.15);
@@ -40,13 +32,8 @@
   padding: 2px 0;
 }
 
-.message.sent p{
-  color: var(--chat-sent-bubble-txt);
-}
-
-.message.received p{
-  color: var(--chat-received-bubble-txt);
-}
+.message.sent p{color: var(--chat-sent-bubble-txt);}
+.message.received p{color: var(--chat-received-bubble-txt); margin-top: 3px;}
 
 .bubble{
   max-width: 60%;
@@ -211,18 +198,17 @@
 }
 
 .replyPreview {
-  position: fixed;
-  bottom: 65px; 
-  left: 18.7%;
-  right: 0;
-  background: var(--chat-received-bubble-bg);
+  position: relative;
+  bottom: 65px !important;
+  background-attachment: var(--chat-received-bubble-bg);
   border-top: 1px solid var(--border);
-  padding: 10px 15px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  animation: fadeInUp 0.2s ease;
+  animation: _fadeInUp_oo9mq_1 .2s ease;
   z-index: 50;
+  margin-bottom: -65px;
+  padding: 10px 15px;
 }
 
 .replyPreviewContent{
@@ -362,9 +348,7 @@
   text-align: center;
 }
 
-.imageMessage{
-  touch-action: pan-y;
-}
+.imageMessage{touch-action: pan-y;}
 
 .imageMessage img{
   position: relative;
@@ -377,33 +361,13 @@
   touch-action: auto;
 }
 
-.fileName{
-  display: block;
-  font-size: 11px;
-  margin-top: 5px;
-  opacity: 0.7;
-}
+.fileName{display: block; font-size: 11px; margin-top: 5px; opacity: 0.7;}
 
-.fileMessage{
-  gap: 5px;
-  touch-action: pan-y;
-  display: flex;
-  align-items: center;
-}
+.fileMessage{gap: 5px; touch-action: pan-y; display: flex; align-items: center;}
+.fileMessage a{color: inherit; text-decoration: underline;}
 
-.fileMessage a{
-  color: inherit;
-  text-decoration: underline;
-}
-
-.messageText{
-  word-break: break-word;
-  touch-action: pan-y;
-  margin: 0;
-}
-.chatWindow.hasReply {
-  padding-bottom: 60px; 
-}
+.messageText{word-break: break-word; touch-action: pan-y; margin: 0;}
+.chatWindow.hasReply{padding-bottom: 60px;}
 .errorUpload{
   position: fixed;
   bottom: 90px;
@@ -416,16 +380,16 @@
   z-index: 100;
 }
 
+
+/*** Keyframes ***/
+
 @keyframes fadeInUp{
-  from{
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to{
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from {opacity: 0; transform: translateY(20px);}
+  to {opacity: 1; transform: translateY(0);}
 }
+
+
+/*** Responsive ***/
 
 @media (max-width: 768px){
   .chatWindow {
@@ -442,28 +406,14 @@
     will-change: auto;
   }
   
-  .messageMenu{
-    display: none !important;
-  }
+  .messageMenu{display: none !important;}
   
-  .bubble{
-    pointer-events: none;
-    max-width: 85%;
-    padding: 8px 12px;
-  }
-  
-  .bubble img,
-  .bubble a{
-    pointer-events: auto;
-  }
+  .bubble{pointer-events: none; max-width: 85%; padding: 8px 12px;}
+  .bubble img, .bubble a{pointer-events: auto;}
 
-  .replyPreview {
-    left: 0; 
-    padding: 8px 10px;
-    bottom: 65px; 
-  }
+  .replyPreview{margin: 0;}
   
-  .messageComposer {
+  .messageComposer{
     position: fixed;
     bottom: 0;
     left: 0;
@@ -493,7 +443,5 @@
     height: 100vh;
     height: calc(var(--vh, 1vh) * 100);
   }
-    .chatWindow.hasReply {
-    padding-bottom: 50px; 
-  }
+  .chatWindow.hasReply{padding-bottom: 50px;}
 }
