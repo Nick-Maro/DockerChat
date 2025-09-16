@@ -165,7 +165,12 @@ export const ChatWindow = memo(() => {
     
     let messageText = text;
     if (replyingTo) {
-      const replyPrefix = `@${replyingTo.from_client}: ${replyingTo.text.substring(0, 50)}${replyingTo.text.length > 50 ? '...' : ''}\n\n`;
+      let replyText = replyingTo.text;
+      const lines = replyText.split('\n');
+      if (lines[0].startsWith('@') && lines.length > 2 && lines[1] === '') {
+        replyText = lines.slice(2).join('\n');
+      }
+      const replyPrefix = `@${replyingTo.from_client}: ${replyText.substring(0, 50)}${replyText.length > 50 ? '...' : ''}\n\n`;
       messageText = replyPrefix + text;
     }
     
@@ -234,6 +239,7 @@ export const ChatWindow = memo(() => {
     if (isReply) {
       const replyLine = lines[0];
       const messageContent = lines.slice(2).join('\n');
+      
       return (
         <div className={styles.messageWithReply}>
           <div className={styles.replyIndicator}>
