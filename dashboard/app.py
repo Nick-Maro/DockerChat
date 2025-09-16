@@ -13,7 +13,7 @@ dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(dotenv_path)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production')
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -92,7 +92,8 @@ def logout():
 @login_required
 def users_management():
     users = get_all_users()
-    return render_template("users.html", users=users)
+    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    return render_template("users.html", users=users, admin_username=admin_username)
 
 @app.route("/users/create", methods=["POST"])
 @login_required
@@ -120,11 +121,13 @@ def create_user_route():
 @login_required
 def delete_user_route(user_id):
     user = get_user_by_id(user_id)
+    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    
     if not user:
         flash("User not found.", "error")
         return redirect(url_for("users_management"))
     
-    if user.username == "admin":
+    if user.username == admin_username:
         flash("Cannot delete admin user.", "error")
         return redirect(url_for("users_management"))
     

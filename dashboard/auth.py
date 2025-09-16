@@ -37,13 +37,14 @@ def init_db():
     user_count = cursor.fetchone()[0]
     
     if user_count == 0:
-        admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
+        admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+        admin_password = os.getenv('ADMIN_PASSWORD', 'dockerchat-is-the-best')
         admin_hash = generate_password_hash(admin_password)
         cursor.execute(
             'INSERT INTO users (username, password_hash) VALUES (?, ?)',
-            ('admin', admin_hash)
+            (admin_username, admin_hash)
         )
-        print(f"Created default admin user with password: {admin_password}")
+        print(f"Created default admin user '{admin_username}' with password: {admin_password}")
     
     conn.commit()
     conn.close()

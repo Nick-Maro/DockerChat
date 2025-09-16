@@ -431,7 +431,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if user.username == 'admin' %}
+                                {% if user.username == admin_username %}
                                     <span class="user-badge admin-badge">
                                         <i class="fas fa-crown me-1"></i>Administrator
                                     </span>
@@ -442,7 +442,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if user.username != 'admin' %}
+                                {% if user.username != admin_username %}
                                 <form method="POST" 
                                       action="{{ url_for('delete_user_route', user_id=user.id) }}" 
                                       style="display: inline;" 
