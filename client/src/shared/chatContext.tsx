@@ -212,6 +212,10 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                     text = decryptResult.text;
                   } else {
                     text = m.content || m.text || '';
+                    if (m.reply_to && m.reply_to_user && m.reply_to_text) {
+                      const replyPrefix = `@${m.reply_to_user}: ${m.reply_to_text.substring(0, 50)}${m.reply_to_text.length > 50 ? '...' : ''}\n\n`;
+                      text = replyPrefix + text;
+                    }
                   }
                 }
                 
@@ -470,12 +474,32 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
 
   const leaveRoom = () => { if (username && currentRoom) { queuedSendMessage({ command: 'leave_room', client_id: username }); setCurrentRoom(null); setRoomMessages([]); } };
 
-  const sendMessageToRoom = (text: string) => {
+  const sendMessageToRoom = (text: string, replyTo?: Message) => {
     if(!username || !currentRoom || status !== 'open') return;
     const ts = new Date().toISOString();
     const msgId = `local-${Date.now()}`;
-    setRoomMessages(prev => [...prev, { id: msgId, from_client: username, text, timestamp: ts, public_key: '', content: '', encrypted: false }]);
-    queuedSendMessage({ command: `send_message:${text}`, client_id: username });
+    
+    let displayText = text;
+    if (replyTo) {
+      let replyText = replyTo.text;
+      const lines = replyText.split('\n');
+      if (lines[0].startsWith('@') && lines.length > 2 && lines[1] === '') {
+        replyText = lines.slice(2).join('\n');
+      }
+      const replyPrefix = `@${replyTo.from_client}: ${replyText.substring(0, 50)}${replyText.length > 50 ? '...' : ''}\n\n`;
+      displayText = replyPrefix + text;
+    }
+    
+    setRoomMessages(prev => [...prev, { id: msgId, from_client: username, text: displayText, timestamp: ts, public_key: '', content: '', encrypted: false }]);
+    
+    const messageData: any = { command: `send_message:${text}`, client_id: username };
+    if (replyTo) {
+      messageData.reply_to = replyTo.id;
+      messageData.reply_to_text = replyTo.text.substring(0, 100);
+      messageData.reply_to_user = replyTo.from_client;
+    }
+    
+    queuedSendMessage(messageData);
   };
 
   const sendPrivateMessage = async (text: string) => {

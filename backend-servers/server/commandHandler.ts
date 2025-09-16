@@ -396,7 +396,7 @@ export class CommandHandler {
                 break;
             }
             case command.startsWith("send_message:"): {
-                let message_text = command.split(":", 2)[1];
+                let message_text = command.substring(command.indexOf(":") + 1);
                 const isFile = data?.file === true;
                 const filename = data?.filename;
                 const mimetype = data?.mimetype; 
