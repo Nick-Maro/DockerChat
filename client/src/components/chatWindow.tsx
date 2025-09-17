@@ -34,6 +34,11 @@ export const ChatWindow = memo(() => {
     return currentClient ? (privateMessages[currentClient.client_id] || []) : messages;
   }, [currentClient, privateMessages, messages]);
 
+
+  const canDeleteMessage = useCallback((msg: Message) => {
+    return msg.from_client === username; 
+  }, [username]);
+
   useEffect(() => {
     if (!isUserScrolling) {
       const timer = setTimeout(() => {
@@ -322,7 +327,9 @@ export const ChatWindow = memo(() => {
                   {showDropdown === msg.id && (
                     <div className={styles.dropdown}>
                       <button onClick={handleReply}>Reply</button>
-                      <button onClick={() => handleDelete(msg.id)}>Delete</button>
+                      {canDeleteMessage(msg) && (
+                        <button onClick={() => handleDelete(msg.id)}>Delete</button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -343,7 +350,11 @@ export const ChatWindow = memo(() => {
         <div className={styles.mobileActions}>
           <button onClick={handleReply} className={styles.replyButton}>
             ↩ Reply
-          </button>
+          {canDeleteMessage(selectedMessage) && (
+            <button onClick={() => handleDelete(selectedMessage.id)} className={styles.deleteButton}>
+              🗑 Delete
+            </button>
+          )}
           <button onClick={() => setSelectedMessage(null)} className={styles.cancelButton}>
             ✕
           </button>
