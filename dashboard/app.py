@@ -13,7 +13,10 @@ dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(dotenv_path)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
+app.secret_key = os.getenv('SECRET_KEY')
+
+if not app.secret_key:
+    raise ValueError("SECRET_KEY must be set in environment variables")
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -92,7 +95,9 @@ def logout():
 @login_required
 def users_management():
     users = get_all_users()
-    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    admin_username = os.getenv('ADMIN_USERNAME')
+    if not admin_username:
+        raise ValueError("ADMIN_USERNAME must be set in environment variables")
     return render_template("users.html", users=users, admin_username=admin_username)
 
 @app.route("/users/create", methods=["POST"])
@@ -121,7 +126,10 @@ def create_user_route():
 @login_required
 def delete_user_route(user_id):
     user = get_user_by_id(user_id)
-    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    admin_username = os.getenv('ADMIN_USERNAME')
+    
+    if not admin_username:
+        raise ValueError("ADMIN_USERNAME must be set in environment variables")
     
     if not user:
         flash("User not found.", "error")
