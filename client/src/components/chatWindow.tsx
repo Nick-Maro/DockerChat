@@ -350,6 +350,7 @@ export const ChatWindow = memo(() => {
         <div className={styles.mobileActions}>
           <button onClick={handleReply} className={styles.replyButton}>
             ↩ Reply
+          </button>
           {canDeleteMessage(selectedMessage) && (
             <button onClick={() => handleDelete(selectedMessage.id)} className={styles.deleteButton}>
               🗑 Delete
