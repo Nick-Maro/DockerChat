@@ -1,28 +1,39 @@
+// cryptoHelpers.ts (aggiornato per IndexedDB)
+import { indexedDBHelper } from './indexedDBHelper';
 import { arrayBufferToBase64, base64ToArrayBuffer } from "./utils";
 
-
 export async function generateECDHKeyPair(): Promise<string> {
-  const stored = localStorage.getItem("ecdh_private");
-  if(stored){
-    try{
-      const jwk = JSON.parse(stored);
-      if (jwk.x && jwk.y) {
-        const pubKey = await crypto.subtle.importKey(
-          "jwk",
-          { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y, ext: true },
-          { name: "ECDH", namedCurve: "P-256" },
-          true,
-          []
-        );
-        const spki = await crypto.subtle.exportKey("spki", pubKey);
-        return `-----BEGIN PUBLIC KEY-----\n${arrayBufferToBase64(spki).match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----`;
+  try {
+    const stored = await indexedDBHelper.getItem("ecdh_private");
+    if(stored){
+      try{
+        const jwk = JSON.parse(stored);
+        if (jwk.x && jwk.y) {
+          const pubKey = await crypto.subtle.importKey(
+            "jwk",
+            { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y, ext: true },
+            { name: "ECDH", namedCurve: "P-256" },
+            true,
+            []
+          );
+          const spki = await crypto.subtle.exportKey("spki", pubKey);
+          return `-----BEGIN PUBLIC KEY-----\n${arrayBufferToBase64(spki).match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----`;
+        }
       }
+      catch{ }
     }
-    catch{ }
+  } catch (e) {
+    console.warn('Failed to get existing ECDH key from IndexedDB:', e);
   }
 
   const keyPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]);
-  localStorage.setItem("ecdh_private", JSON.stringify(await crypto.subtle.exportKey("jwk", keyPair.privateKey)));
+  
+  try {
+    await indexedDBHelper.setItem("ecdh_private", JSON.stringify(await crypto.subtle.exportKey("jwk", keyPair.privateKey)));
+  } catch (e) {
+    console.warn('Failed to store ECDH private key in IndexedDB:', e);
+  }
+  
   const spki = await crypto.subtle.exportKey("spki", keyPair.publicKey);
   return `-----BEGIN PUBLIC KEY-----\n${arrayBufferToBase64(spki).match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----`;
 }
@@ -39,7 +50,7 @@ export function cleanBase64Input(input: string): string {
 
 export async function getLocalECDHPublic(): Promise<string | null> {
   try {
-    const stored = localStorage.getItem('ecdh_private');
+    const stored = await indexedDBHelper.getItem('ecdh_private');
     if(!stored) return null;
     const jwk = JSON.parse(stored);
     if(!jwk.x || !jwk.y) return null;
@@ -57,16 +68,21 @@ export async function getLocalECDHPublic(): Promise<string | null> {
 }
 
 export async function getECDHPrivateKey(): Promise<CryptoKey | null> {
-  const stored = localStorage.getItem("ecdh_private");
-  if (!stored) return null;
-  const jwk = JSON.parse(stored);
-  return await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveKey", "deriveBits"]
-  );
+  try {
+    const stored = await indexedDBHelper.getItem("ecdh_private");
+    if (!stored) return null;
+    const jwk = JSON.parse(stored);
+    return await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "ECDH", namedCurve: "P-256" },
+      true,
+      ["deriveKey", "deriveBits"]
+    );
+  } catch (e) {
+    console.warn('Failed to get ECDH private key from IndexedDB:', e);
+    return null;
+  }
 }
 
 export async function importECDHPublicKey(pemKey: string): Promise<CryptoKey> {
@@ -172,22 +188,3 @@ export async function fingerprintKey(sharedKey: CryptoKey): Promise<string> {
     return '';
   }
 }
-
-/* export async function testEncryptDecryptRoundtrip(): Promise<{ success: boolean; details: any }> {
-  try{
-    const a = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
-    const b = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
-    const keyA = await crypto.subtle.deriveKey({ name: 'ECDH', public: (b as any).publicKey }, (a as any).privateKey as CryptoKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-    const keyB = await crypto.subtle.deriveKey({ name: 'ECDH', public: (a as any).publicKey }, (b as any).privateKey as CryptoKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-    const fpAraw = await crypto.subtle.exportKey('raw', keyA as CryptoKey);
-    const fpBraw = await crypto.subtle.exportKey('raw', keyB as CryptoKey);
-    const fpA = btoa(String.fromCharCode(...new Uint8Array(fpAraw))).substring(0, 24);
-    const fpB = btoa(String.fromCharCode(...new Uint8Array(fpBraw))).substring(0, 24);
-    const message = 'test message ' + Date.now();
-    const ciphertext = await encryptMessage(keyA as CryptoKey, message);
-    const decrypted = await decryptMessage(keyB as CryptoKey, ciphertext);
-    const details = { fpA, fpB, ciphertextLen: ciphertext.length, decrypted };
-    return { success: decrypted === message, details };
-  }
-  catch(e){ return { success: false, details: { error: String(e) } }; }
-} */

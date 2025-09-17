@@ -25,6 +25,9 @@ export interface Message {
     mimetype?: string;
     content?: string;
     encrypted?: boolean;
+    reply_to?: string; 
+    reply_to_text?: string; 
+    reply_to_user?: string; 
 }
 
 export interface PrivateMessage {
@@ -40,6 +43,9 @@ export interface PrivateMessage {
     mimetype?: string;
     content?: string;
     encrypted?: boolean;
+    reply_to?: string; 
+    reply_to_text?: string; 
+    reply_to_user?: string; 
 }
 
 export interface Room {

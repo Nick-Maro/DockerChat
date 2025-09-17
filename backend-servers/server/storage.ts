@@ -543,6 +543,72 @@ class Storage {
 
         return result;
     }
+
+    async deletePrivateMessage(messageId: string): Promise<boolean> {
+        if (!messageId || typeof messageId !== 'string' || messageId.trim() === '') {
+            console.error('[ERROR] Invalid messageId provided for deletion');
+            return false;
+        }
+
+        const trimmedMessageId = messageId.trim();
+
+        try {
+            let message: PrivateMessage | null = null;
+            
+            if (this.redis) {
+                try {
+                    const messageData = await this.redis.get(this.REDIS_KEYS.PRIVATE_MSG(trimmedMessageId));
+                    if (messageData) {
+                        message = JSON.parse(messageData) as PrivateMessage;
+                    }
+                } catch (error) {
+                    console.error(`[ERROR] Failed to retrieve message from Redis: ${error}`);
+                    message = this.localPrivateMessages.get(trimmedMessageId) || null;
+                }
+            }
+            else message = this.localPrivateMessages.get(trimmedMessageId) || null;
+
+            if(!message){
+                console.warn(`[WARN] Message with ID ${trimmedMessageId} not found`);
+                return false;
+            }
+
+            if(this.redis){
+                try {
+                    const pipeline = this.redis.multi();
+                    
+                    pipeline.del(this.REDIS_KEYS.PRIVATE_MSG(trimmedMessageId));
+                    
+                    pipeline.lRem(this.REDIS_KEYS.USER_MESSAGES_INDEX(message.to_client), 0, trimmedMessageId);
+                    pipeline.lRem(this.REDIS_KEYS.USER_MESSAGES_INDEX(message.from_client), 0, trimmedMessageId);
+                    
+                    const results = await pipeline.exec();
+                    
+                    if(!results || results.length === 0 || results[0]?.error)
+                        throw new Error(`Pipeline execution failed: ${results?.[0]?.error || 'Unknown error'}`);
+                    console.log(`[INFO] Message ${trimmedMessageId} deleted from Redis successfully`);
+                }
+                catch(error){ console.error(`[ERROR] Failed to delete message from Redis: ${error}`); }
+            }
+
+            const localDeleted = this.localPrivateMessages.delete(trimmedMessageId);
+            
+            if(localDeleted || this.redis){
+                console.log(`[INFO] Message ${trimmedMessageId} deleted successfully`);
+                return true;
+            }
+            else{
+                console.warn(`[WARN] Message ${trimmedMessageId} was not found in local storage`);
+                return false;
+            }
+
+        }
+        catch(error){
+            console.error(`[ERROR] Unexpected error while deleting message ${trimmedMessageId}: ${error}`);
+            return false;
+        }
+    }
+
 }
 
 export const storage = new Storage();

@@ -396,12 +396,15 @@ export class CommandHandler {
                 break;
             }
             case command.startsWith("send_message:"): {
-                let message_text = command.split(":", 2)[1];
+                let message_text = command.substring(command.indexOf(":") + 1);
                 const isFile = data?.file === true;
                 const filename = data?.filename;
                 const mimetype = data?.mimetype; 
                 const content = data?.content;
                 const encrypted = data?.encrypted === true;
+                const reply_to = data?.reply_to;
+                const reply_to_text = data?.reply_to_text;
+                const reply_to_user = data?.reply_to_user;
                 
                 if(!encrypted && !isFile && message_text) {
                     if (this.containsFilteredContent(message_text)) {
@@ -427,7 +430,10 @@ export class CommandHandler {
                         filename: filename,
                         mimetype: mimetype,
                         content: content,
-                        encrypted: encrypted
+                        encrypted: encrypted,
+                        reply_to: reply_to,
+                        reply_to_text: reply_to_text,
+                        reply_to_user: reply_to_user
                     });
 
                     const roomClients = await this.dataManager.getRoomClients(room_id);
@@ -443,7 +449,10 @@ export class CommandHandler {
                             text: encrypted ? (data?.content || '') : message_text,
                             file: isFile,
                             encrypted: encrypted,
-                            content: encrypted ? (data?.content || '') : (isFile ? content : message_text)
+                            content: encrypted ? (data?.content || '') : (isFile ? content : message_text),
+                            reply_to: reply_to,
+                            reply_to_text: reply_to_text,
+                            reply_to_user: reply_to_user
                         };                       
                         if(isFile){
                             (messageData as any).filename = filename;
@@ -477,6 +486,9 @@ export class CommandHandler {
 
                 const to_client_id = parts[1];
                 let message_text = parts[2];
+                const reply_to = data?.reply_to;
+                const reply_to_text = data?.reply_to_text;
+                const reply_to_user = data?.reply_to_user;
 
                 if(data?.encrypted === true && data?.content) {
                     message_text = data.content;
@@ -528,7 +540,10 @@ export class CommandHandler {
                     filename,
                     mimetype,
                     content,
-                    data?.encrypted === true
+                    data?.encrypted === true,
+                    reply_to,
+                    reply_to_text,
+                    reply_to_user
                 );
 
                 const messageData = {
@@ -540,7 +555,10 @@ export class CommandHandler {
                     verified: true,
                     file: isFile,
                     message_id: message_id,
-                    encrypted: data?.encrypted === true
+                    encrypted: data?.encrypted === true,
+                    reply_to: reply_to,
+                    reply_to_text: reply_to_text,
+                    reply_to_user: reply_to_user
                 };
 
                 if (isFile) {
@@ -669,6 +687,64 @@ export class CommandHandler {
                     message: "Heartbeat received",
                     client_status: "alive"
                 };
+                break;
+            }
+            case command.startsWith("delete_private_message:"): {
+                const messageId = command.split(":", 2)[1];
+                if(!messageId || messageId.trim() === ''){
+                    response.error = "Command format: delete_private_message:MESSAGE_ID";
+                    break;
+                }
+
+                const messageIdTrim = messageId.trim();
+                try {
+                    const deletionResult = await this.dataManager.deletePrivateMessage(messageIdTrim, client_id);
+
+                    if (deletionResult.success) {
+                        response = {
+                            ...response,
+                            message: deletionResult.message || "Message deleted",
+                            message_id: messageId.trim()
+                        };
+                        
+                        try {
+                            const allMessages = await this.dataManager.getPrivateMessages();
+                            const deletedMessage = Object.values(allMessages).find(msg => msg.id === messageId.trim());
+                            if (deletedMessage) {
+                                const otherClientId = deletedMessage.from_client === client_id ? deletedMessage.to_client : deletedMessage.from_client;
+                                const otherWs = wsClientMap.get(otherClientId);
+                                if (otherWs && otherWs.readyState === 1) {
+                                    otherWs.send(JSON.stringify({
+                                        event: "private_message_deleted",
+                                        message_id: messageId.trim(),
+                                        deleted_by: client_id,
+                                        timestamp: getCurrentISOString()
+                                    }));
+                                }
+                            }
+                        } catch (notifyError) {
+                            printDebug(`[CMD] Failed to notify other client about message deletion: ${notifyError}`, DebugLevel.WARN);
+                        }
+                        
+                        printDebug(`[CMD] Message ${messageId.trim()} deleted by ${client_id}`, DebugLevel.INFO);
+                    } else {
+                        response.error = deletionResult.message || deletionResult.error || "Impossibile eliminare il messaggio";
+                        
+                        switch (deletionResult.error){
+                            case 'MESSAGE_NOT_FOUND':
+                                printDebug(`[CMD] Delete attempt failed - message not found: ${messageId} by ${client_id}`, DebugLevel.WARN);
+                                break;
+                            case 'UNAUTHORIZED':
+                                printDebug(`[CMD] Unauthorized delete attempt: ${messageId} by ${client_id}`, DebugLevel.WARN);
+                                break;
+                            default:
+                                printDebug(`[CMD] Delete failed: ${deletionResult.error} for message ${messageId} by ${client_id}`, DebugLevel.WARN);
+                        }
+                    }
+                } catch(error) {
+                    response.error = "Errore interno durante l'eliminazione del messaggio";
+                    printDebug(`[CMD] Unexpected error in delete_private_message: ${error}`, DebugLevel.ERROR);
+                }
                 break;
             }
             case command === "disconnect": {

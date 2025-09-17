@@ -29,7 +29,7 @@ export type ChatContextType = {
   clients: Client[];
   currentClient: Client | null;
   setCurrentClient: (client: Client | null) => void;
-  setCurrentRoom: (room: Room | null) => void;
+  setgCurrentRoom: (room: Room | null) => void;
   joinRoom: (roomName: string) => void;
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
@@ -38,6 +38,7 @@ export type ChatContextType = {
   fetchPrivateMessages: (clientId: string) => void;
   sendFile: (file: File) => void;
   sendPrivateFile: (file: File) => void;
+  deletePrivateMessage: (messageId: string) => Promise<void>;
 };
 
 export interface WSResponse {
@@ -79,6 +80,9 @@ export interface PrivateMessage {
   text: string;
   timestamp: string;
   direction: 'sent' | 'received';
+  reply_to?: string; 
+  reply_to_text?: string; 
+  reply_to_user?: string; 
 }
 
 export interface Message {
@@ -99,4 +103,7 @@ export interface Message {
   warning?: string;
   status?: "sent" | "pending" | "failed";
   retryCount?: number;
+  reply_to?: string; 
+  reply_to_text?: string; 
+  reply_to_user?: string; 
 }

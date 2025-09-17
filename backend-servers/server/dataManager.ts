@@ -1,7 +1,7 @@
-import { storage } from './storage';
-import { CONFIG } from './config';
-import { isExpired, generateUUID, getCurrentISOString } from './utils/utils.ts';
-import type { Message, PrivateMessage, ClientInRoom, Client, Room } from './types';
+import {storage} from './storage';
+import {CONFIG} from './config';
+import {DebugLevel, generateUUID, getCurrentISOString, isExpired, printDebug} from './utils/utils.ts';
+import type {Client, ClientInRoom, Message, PrivateMessage, Room} from './types';
 
 export class DataManager {
     private cleanupLock = false;
@@ -238,5 +238,121 @@ export class DataManager {
     async getRoomECDHKeys(roomId: string): Promise<Map<string, string>> {
         const clientIds = await storage.getRoomClients(roomId);
         return await storage.getBatchClientECDHKeys(clientIds);
+    }
+
+    // to fix
+    async deletePrivateMessage(messageId: string, requestingClientId?: string): Promise<{ success: boolean; error?: string; message?: string }> {
+        try {
+            if(!messageId || typeof messageId !== 'string' || messageId.trim() === ''){
+                return {
+                    success: false,
+                    error: 'INVALID_MESSAGE_ID',
+                    message: 'Message ID not valid'
+                };
+            }
+
+            const trimmedMessageId = messageId.trim();
+
+            if (requestingClientId) {
+                const privateMessages = await storage.getPrivateMessages();
+                const messageToDelete = privateMessages[trimmedMessageId];
+                
+                if (!messageToDelete) {
+                    return {
+                        success: false,
+                        error: 'MESSAGE_NOT_FOUND',
+                        message: 'Message not found'
+                    };
+                }
+
+                const isAuthorized = messageToDelete.from_client === requestingClientId;
+                if (!isAuthorized){
+                    return {
+                        success: false,
+                        error: 'UNAUTHORIZED',
+                        message: "You don't have permission for do this"
+                    };
+                }
+
+                const requestingClient = await storage.getClient(requestingClientId);
+                if (!requestingClient){
+                    return {
+                        success: false,
+                        error: 'CLIENT_NOT_FOUND',
+                        message: 'Client not found'
+                    };
+                }
+
+                await this.updateClientLastSeen(requestingClientId);
+            }
+
+            const deletionResult = await storage.deletePrivateMessage(trimmedMessageId);
+
+            if (deletionResult){
+                return {
+                    success: true,
+                    message: 'Message delete successfully'
+                };
+            } else {
+                return {
+                    success: false,
+                    error: 'DELETION_FAILED',
+                    message: 'Failed message deletion: the message probably not exists.'
+                };
+            }
+        } catch(error){
+            printDebug(`[ERROR] DataManager.deletePrivateMessage failed: ${error}`, DebugLevel.ERROR);
+            return {
+                success: false,
+                error: 'INTERNAL_ERROR',
+                message: "Error during message deletion"
+            };
+        }
+    }
+
+    async deleteMultiplePrivateMessages(messageIds: string[], requestingClientId?: string): Promise<{ 
+        success: boolean; 
+        deletedCount: number; 
+        failedCount: number; 
+        errors: Array<{ messageId: string; error: string }> 
+    }> {
+        const results = {
+            success: true,
+            deletedCount: 0,
+            failedCount: 0,
+            errors: [] as Array<{ messageId: string; error: string }>
+        };
+
+        if(!messageIds || messageIds.length === 0){
+            results.success = false;
+            results.errors.push({ messageId: '', error: 'Nessun ID messaggio fornito' });
+            return results;
+        }
+
+        if(requestingClientId) await this.updateClientLastSeen(requestingClientId);
+
+        for(const messageId of messageIds){
+            try {
+                const result = await this.deletePrivateMessage(messageId, requestingClientId);
+                if (result.success) {
+                    results.deletedCount++;
+                } else {
+                    results.failedCount++;
+                    results.errors.push({ 
+                        messageId, 
+                        error: result.error || result.message || 'Errore sconosciuto' 
+                    });
+                }
+            } catch (error) {
+                results.failedCount++;
+                results.errors.push({ 
+                    messageId, 
+                    error: `Errore durante l'eliminazione: ${error}` 
+                });
+            }
+        }
+
+        if(results.failedCount > 0) results.success = false;
+        return results;
     }
 }

@@ -137,6 +137,7 @@ services:
     volumes:
       - redis_data:/app/redis_data:ro
       - shared_logs:/var/log/shared
+      - dashboard_data:/data
       - ./firewall/rules.json:/var/log/shared/firewall/rules.json:Z
     env_file:
       - .env
@@ -151,6 +152,8 @@ volumes:
   shared_logs:
     driver: local
   redis_data:
+    driver: local
+  dashboard_data:
     driver: local
 
 networks:

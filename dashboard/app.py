@@ -1,17 +1,33 @@
 from datetime import timezone
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import json
 import os
 import redis
 from redis.exceptions import RedisError
 from dotenv import load_dotenv
+from auth import init_db, get_user_by_id, get_user_by_username, verify_password, update_last_login, get_all_users, create_user, delete_user
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(dotenv_path)
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access the dashboard.'
+login_manager.login_message_category = 'info'
+
+@login_manager.user_loader
+def load_user(user_id):
+    return get_user_by_id(int(user_id))
+
+# Initialize database
+init_db()
 
 FIREWALL_RULES_PATH = "/var/log/shared/firewall/rules.json"
 FIREWALL_LOG_PATH = "/var/log/shared/firewall/firewall.log"
@@ -37,10 +53,93 @@ except RedisError as a:
     REDIS_AVAILABLE = False
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html", redis_available=REDIS_AVAILABLE)
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        
+        if not username or not password:
+            flash("Username and password are required.", "error")
+            return render_template("login.html")
+        
+        user = get_user_by_username(username)
+        if user and verify_password(user, password):
+            login_user(user)
+            update_last_login(user.id)
+            flash(f"Welcome back, {user.username}!", "success")
+            
+            # Redirect to next page if specified, otherwise to dashboard
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('index'))
+        else:
+            flash("Invalid username or password.", "error")
+    
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("You have been logged out successfully.", "info")
+    return redirect(url_for("login"))
+
+@app.route("/users")
+@login_required
+def users_management():
+    users = get_all_users()
+    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    return render_template("users.html", users=users, admin_username=admin_username)
+
+@app.route("/users/create", methods=["POST"])
+@login_required
+def create_user_route():
+    username = request.form.get("username")
+    password = request.form.get("password")
+    
+    if not username or not password:
+        flash("Username and password are required.", "error")
+        return redirect(url_for("users_management"))
+    
+    if len(password) < 6:
+        flash("Password must be at least 6 characters long.", "error")
+        return redirect(url_for("users_management"))
+    
+    user = create_user(username, password)
+    if user:
+        flash(f"User '{username}' created successfully.", "success")
+    else:
+        flash(f"Username '{username}' already exists.", "error")
+    
+    return redirect(url_for("users_management"))
+
+@app.route("/users/delete/<int:user_id>", methods=["POST"])
+@login_required
+def delete_user_route(user_id):
+    user = get_user_by_id(user_id)
+    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("users_management"))
+    
+    if user.username == admin_username:
+        flash("Cannot delete admin user.", "error")
+        return redirect(url_for("users_management"))
+    
+    if delete_user(user_id):
+        flash(f"User '{user.username}' deleted successfully.", "success")
+    else:
+        flash("Failed to delete user.", "error")
+    
+    return redirect(url_for("users_management"))
+
 @app.route("/firewall", methods=["GET", "POST"])
+@login_required
 def firewall():
     if request.method == "POST":
         new_rules = request.form.get("rules")
@@ -104,11 +203,13 @@ def firewall():
     return render_template("firewall.html", rules=json.dumps(rules, indent=4))
 
 @app.route("/logs")
+@login_required
 def logs():
     firewall_log = read_file(FIREWALL_LOG_PATH)
     return render_template("logs.html", firewall_log=firewall_log)
 
 @app.route("/stats")
+@login_required
 def stats():
     firewall_log = read_file(FIREWALL_LOG_PATH)
     blocked_attempts = sum(1 for line in firewall_log.splitlines() if "BLOCKED" in line)
@@ -126,6 +227,7 @@ def stats():
                           redis_available=REDIS_AVAILABLE)
 
 @app.route("/redis")
+@login_required
 def redis_management():
     print(f"Redis available: {REDIS_AVAILABLE}")
     if not REDIS_AVAILABLE:
@@ -148,6 +250,7 @@ def redis_management():
         return redirect(url_for("index"))
 
 @app.route("/redis/clear", methods=["POST"])
+@login_required
 def clear_redis():
     if not REDIS_AVAILABLE:
         return jsonify({"success": False, "message": "Redis not available"}), 503
@@ -178,6 +281,7 @@ def clear_redis():
         return jsonify({"success": False, "message": error_msg}), 500
 
 @app.route("/redis/export")
+@login_required
 def export_redis():
     if not REDIS_AVAILABLE:
         return jsonify({"error": "Redis not available"}), 503
@@ -207,6 +311,7 @@ def health():
     return jsonify(health_status)
 
 @app.route("/debug")
+@login_required
 def debug():
     debug_info = {
         "current_directory": os.getcwd(),
