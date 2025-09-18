@@ -29,7 +29,7 @@ export type ChatContextType = {
   clients: Client[];
   currentClient: Client | null;
   setCurrentClient: (client: Client | null) => void;
-  setgCurrentRoom: (room: Room | null) => void;
+  setCurrentRoom: (room: Room | null) => void;
   joinRoom: (roomName: string) => void;
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
@@ -103,7 +103,8 @@ export interface Message {
   warning?: string;
   status?: "sent" | "pending" | "failed";
   retryCount?: number;
-  reply_to?: string; 
-  reply_to_text?: string; 
-  reply_to_user?: string; 
+  reply_to?: string;
+  reply_to_text?: string;
+  reply_to_user?: string;
+  message_id: string;
 }

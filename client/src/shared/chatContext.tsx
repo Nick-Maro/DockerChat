@@ -413,7 +413,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                   setPrivateMessages(prev => {
                     const list = prev[m.to_client] || [];
                     const filtered = list.filter(msg => !msg.id.startsWith('local-'));
-                    return { ...prev, [m.to_client]: [...filtered, pm] };
+                    return { ...prev, [m.to_client]: list.map(msg => msg.id.startsWith('local-') ? pm : msg) };
                   });
                 } else {
                   setPrivateMessages(prev => {
@@ -423,7 +423,20 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 }
                 break;
               }
+              case 'private_message_deleted': {
+                const { message_id, deleted_by } = msg;
+                if(!message_id) break;
 
+                const peer = currentClient?.client_id;
+                if(!peer) break;
+
+                setPrivateMessages(prev => {
+                  const list = prev[peer] || [];
+                  return { ...prev, [peer]: list.map(m => m.id === message_id ? { ...m, text: 'Message deleted', content: '', encrypted: false, file: false } : m) };
+                });
+
+                break;
+              }
               case 'get_ecdh_key':
                 if(msg.ecdh_key && msg.target_user){
                   try{ 
@@ -522,7 +535,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     try{ sender_pub = await getLocalECDHPublic(); } catch {}
     let displayed = text;
     try{ const dec = await decryptMessage(key, encrypted); if (dec) displayed = dec; } catch {}
-    const localId = `local-${Date.now()}`;
+    const localId = crypto.randomUUID();
     const localMsg: Message = {
       id: localId,
       from_client: username,
@@ -532,10 +545,11 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
       public_key: '',
       content: encrypted,
       encrypted: true,
-      file: false
+      file: false,
+      message_id: localId
     };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), localMsg] }));
-    await queuedSendMessage({ command: `send_private:${peer}:ENC`, client_id: username, encrypted: true, content: encrypted, sk_fingerprint: sk_fp, sender_ecdh_public: sender_pub });
+    await queuedSendMessage({ command: `send_private:${peer}:ENC`, client_id: username, encrypted: true, content: encrypted, sk_fingerprint: sk_fp, sender_ecdh_public: sender_pub, message_id: localId });
   };
 
   const sendPrivateFile = async (file: File) => {
@@ -599,25 +613,27 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
   
   const deletePrivateMessage = async (messageId: string) => {
     if (!username || !currentClient) return;
-    const peer = currentClient.client_id;
-    const messageToDelete = privateMessages[peer]?.find(m => m.id === messageId);
 
-    setPrivateMessages(prev => {
-        const list = prev[peer] || [];
-        return { ...prev, [peer]: list.filter(m => m.id !== messageId) };
-    });
+    let messageToDelete, peerKey;
+    for(const p of Object.keys(privateMessages)){
+      const msg = privateMessages[p]?.find(m => m.id === messageId);
+      if(msg) messageToDelete = msg; peerKey = p; break;
+    }
+    if(!messageToDelete) return;
 
-    try{ await queuedSendMessage({command: `delete_private_message:${messageId}`, client_id: username}); }
+    setPrivateMessages(prev => ({
+      ...prev,
+      [peerKey]: (prev[peerKey] || []).map(m => m.id === messageId ? { ...m, text: "Message deleted", content: null, file: false, encrypted: false } : m)
+    }));
+
+    try { await queuedSendMessage({ command: `delete_private_message:${messageId}`, client_id: username }); }
     catch(error){
-        console.error('Failed to delete message:', error);
-        
-        if(messageToDelete){
-            setPrivateMessages(prev => {
-                const list = prev[peer] || [];
-                return { ...prev, [peer]: [...list, messageToDelete].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                };
-            });
-        }
+      console.error('Failed to delete message:', error);
+      setPrivateMessages(prev => ({
+        ...prev,
+        [peerKey]: (prev[peerKey] || []).map(m => m.id === messageId ? messageToDelete : m)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      }));
     }
   };
 
