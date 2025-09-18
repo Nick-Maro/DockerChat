@@ -609,6 +609,32 @@ class Storage {
         }
     }
 
+    async updatePrivateMessage(messageId: string, updatedFields: Partial<PrivateMessage>): Promise<boolean> {
+        if(!messageId || typeof messageId !== 'string') return false;
+        const trimmedId = messageId.trim();
+        try {
+            let existing: PrivateMessage | undefined;
+            if(this.redis){
+                const data = await this.redis.get(this.REDIS_KEYS.PRIVATE_MSG(trimmedId));
+                if(!data) return false;
+                existing = JSON.parse(data) as PrivateMessage;
+                const updated: PrivateMessage = { ...existing, ...updatedFields };
+                await this.redis.set(this.REDIS_KEYS.PRIVATE_MSG(trimmedId), JSON.stringify(updated));
+            }
+            else{
+                existing = this.localPrivateMessages.get(trimmedId);
+                if(!existing) return false;
+                const updated: PrivateMessage = { ...existing, ...updatedFields };
+                this.localPrivateMessages.set(trimmedId, updated);
+            }
+            return true;
+        }
+        catch(err){
+            console.error(`[ERROR] Failed to update private message ${trimmedId}:`, err);
+            return false;
+        }
+    }
+
 }
 
 export const storage = new Storage();

@@ -104,16 +104,16 @@ export class DataManager {
         fromClient: string, 
         toClient: string, 
         messageText: string, 
+        message_id: string,
         signature?: string,
         isFile?: boolean,
         filename?: string,
         mimetype?: string,
         content?: string,
-        encrypted?: boolean
+        encrypted?: boolean,
     ): Promise<string> {
-        const messageId = generateUUID();
         const message: PrivateMessage = {
-            id: messageId,
+            id: message_id,
             from_client: fromClient,
             to_client: toClient,
             text: messageText,
@@ -127,7 +127,7 @@ export class DataManager {
             encrypted: encrypted || false
         };
         await storage.addPrivateMessage(message);
-        return messageId;
+        return message_id;
     }
 
     async updateClientLastSeen(clientId: string): Promise<void> {
@@ -307,6 +307,14 @@ export class DataManager {
                 error: 'INTERNAL_ERROR',
                 message: "Error during message deletion"
             };
+        }
+    }
+
+    async updatePrivateMessage(messageId: string, updatedFields: Partial<PrivateMessage>): Promise<boolean> {
+        try { return await storage.updatePrivateMessage(messageId, updatedFields); }
+        catch(err){
+            printDebug(`[ERROR] DataManager.updatePrivateMessage failed: ${err}`, DebugLevel.ERROR);
+            return false;
         }
     }
 

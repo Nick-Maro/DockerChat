@@ -521,7 +521,7 @@ export class CommandHandler {
                 }
                 catch(dErr){ printDebug('[CMD] Failed to log send_private diag:' + dErr, DebugLevel.WARN); }
 
-                if (!client) {
+                if(!client){
                     response.error = "Recipient Client not found";
                     break;
                 }
@@ -530,11 +530,13 @@ export class CommandHandler {
                 const filename = data?.filename;
                 const mimetype = data?.mimetype;
                 const content = data?.content;
+                const clientProvidedMessageId: string = typeof data?.message_id === 'string' ? data.message_id : generateUUID();
 
                 const message_id = await this.dataManager.addPrivateMessage(
                     client_id,
                     to_client_id,
                     message_text,
+                    clientProvidedMessageId,
                     data?.signature,
                     isFile,
                     filename,
@@ -543,8 +545,9 @@ export class CommandHandler {
                     data?.encrypted === true,
                     reply_to,
                     reply_to_text,
-                    reply_to_user
+                    reply_to_user,
                 );
+
 
                 const messageData = {
                     event: "private_message_received",
@@ -691,57 +694,48 @@ export class CommandHandler {
             }
             case command.startsWith("delete_private_message:"): {
                 const messageId = command.split(":", 2)[1];
-                if(!messageId || messageId.trim() === ''){
+                if(!messageId?.trim()){
                     response.error = "Command format: delete_private_message:MESSAGE_ID";
                     break;
                 }
 
                 const messageIdTrim = messageId.trim();
                 try {
-                    const deletionResult = await this.dataManager.deletePrivateMessage(messageIdTrim, client_id);
-
-                    if (deletionResult.success) {
-                        response = {
-                            ...response,
-                            message: deletionResult.message || "Message deleted",
-                            message_id: messageId.trim()
-                        };
-                        
-                        try {
-                            const allMessages = await this.dataManager.getPrivateMessages();
-                            const deletedMessage = Object.values(allMessages).find(msg => msg.id === messageId.trim());
-                            if (deletedMessage) {
-                                const otherClientId = deletedMessage.from_client === client_id ? deletedMessage.to_client : deletedMessage.from_client;
-                                const otherWs = wsClientMap.get(otherClientId);
-                                if (otherWs && otherWs.readyState === 1) {
-                                    otherWs.send(JSON.stringify({
-                                        event: "private_message_deleted",
-                                        message_id: messageId.trim(),
-                                        deleted_by: client_id,
-                                        timestamp: getCurrentISOString()
-                                    }));
-                                }
-                            }
-                        } catch (notifyError) {
-                            printDebug(`[CMD] Failed to notify other client about message deletion: ${notifyError}`, DebugLevel.WARN);
-                        }
-                        
-                        printDebug(`[CMD] Message ${messageId.trim()} deleted by ${client_id}`, DebugLevel.INFO);
-                    } else {
-                        response.error = deletionResult.message || deletionResult.error || "Impossibile eliminare il messaggio";
-                        
-                        switch (deletionResult.error){
-                            case 'MESSAGE_NOT_FOUND':
-                                printDebug(`[CMD] Delete attempt failed - message not found: ${messageId} by ${client_id}`, DebugLevel.WARN);
-                                break;
-                            case 'UNAUTHORIZED':
-                                printDebug(`[CMD] Unauthorized delete attempt: ${messageId} by ${client_id}`, DebugLevel.WARN);
-                                break;
-                            default:
-                                printDebug(`[CMD] Delete failed: ${deletionResult.error} for message ${messageId} by ${client_id}`, DebugLevel.WARN);
-                        }
+                    const allMessages = await this.dataManager.getPrivateMessages();
+                    const targetMessage = Object.values(allMessages).find(msg => msg.id === messageIdTrim);
+                    if(!targetMessage){
+                        response.error = "Message not found";
+                        break;
                     }
-                } catch(error) {
+
+                    const updatedMessage: Partial<PrivateMessage> = {
+                        text: "Message deleted",
+                        encrypted: false,
+                        file: false,
+                        content: null
+                    };
+
+                    const success = await this.dataManager.updatePrivateMessage(messageIdTrim, updatedMessage);
+                    if(success){
+                        response = { ...response, message: "Message deleted", message_id: messageIdTrim};
+
+                        const otherClientId = targetMessage.from_client === client_id ? targetMessage.to_client : targetMessage.from_client;
+
+                        const otherWs = wsClientMap.get(otherClientId);
+                        if (otherWs?.readyState === 1) {
+                            otherWs.send(JSON.stringify({
+                                event: "private_message_deleted",
+                                message_id: messageIdTrim,
+                                deleted_by: client_id,
+                                timestamp: getCurrentISOString()
+                            }));
+                        }
+
+                        printDebug(`[CMD] Message ${messageIdTrim} soft deleted by ${client_id}`, DebugLevel.INFO);
+                    }
+                    else response.error = "Failed to update message";
+                }
+                catch(error){
                     response.error = "Errore interno durante l'eliminazione del messaggio";
                     printDebug(`[CMD] Unexpected error in delete_private_message: ${error}`, DebugLevel.ERROR);
                 }
