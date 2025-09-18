@@ -392,13 +392,6 @@
 /*** Responsive ***/
 
 @media (max-width: 768px){
-  .chatWindow {
-    height: calc(100vh - 80px - 65px);
-    height: calc(var(--vh, 1vh) * 100 - 80px - 65px);
-    margin-bottom: 0;
-    padding-bottom: 0;
-  }
-  
   .message{
     user-select: none;
     -webkit-user-select: none;
