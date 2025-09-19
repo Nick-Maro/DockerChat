@@ -31,7 +31,7 @@ export function RoomList(){
                         <img
                             onClick={() => handleJoinRoom(room.name)}
                             title={`${room.name} — ${room.clients} clients, ${room.messages} messages`}
-                            src={`https://placehold.co/50x50/8775E9/FFF?text=${room.name.charAt(0).toUpperCase()}`}
+                            src={`https://placehold.co/50x50/${currentRoom?.name === room.name ? '78C841' : '8775E9'}/FFF?text=${room.name.charAt(0).toUpperCase()}`}
                             alt={room.name}
                         />
                     </li>

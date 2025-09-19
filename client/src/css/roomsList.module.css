@@ -4,5 +4,6 @@
 .rooms ul li{display: flex; cursor: pointer; background: none;}
 .rooms ul li > img{border-radius: 50%; outline: 2px solid #8775e9; outline-offset: 2px;}
 .addRoomBtn{width: 60px; height: 60px; border: 2px solid #8775e9; border-radius: 50%;}
+.addRoomBtn:hover{background-color: #2d2d2d;}
 
 .activeRoom img{outline: 2px solid #78C841 !important;}
