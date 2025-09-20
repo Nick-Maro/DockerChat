@@ -8,7 +8,6 @@
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  transform: translateZ(0);
   will-change: scroll-position;
 }
 
