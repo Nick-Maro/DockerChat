@@ -127,7 +127,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     }
     let key = sharedKeys.current[peer];
     if(!key) key = await getOrCreateSharedKey(peer);
-    if(!key) return { text: '[Messaggio criptato - chiave non disponibile]', ok: false };
+    if(!key) return { text: '[Encrypted message - key not available]', ok: false };
     try{ const plain = await decryptMessage(key, payload); return { text: plain, ok: true }; }
     catch(e){
       if(sk_fingerprint){
@@ -144,7 +144,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
         }
         catch {}
       }
-      return { text: '[Messaggio criptato - impossibile decifrare]', ok: false };
+      return { text: '[Encrypted message - unable to decrypt]', ok: false };
     }
   }, [getOrCreateSharedKey]);
 
@@ -255,9 +255,9 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                     const key = await getOrCreateSharedKey(peer);
                     if(key){
                       try { text = await decryptMessage(key, content || text); encrypted = false; }
-                      catch { text = '[Messaggio criptato - impossibile decifrare]'; }
+                      catch { text = '[Encrypted message - unable to decrypt]'; }
                     }
-                    else text = '[Messaggio criptato - chiave non disponibile]';
+                    else text = '[Encrypted message - key not available]';
                   }
 
                   return {
@@ -523,7 +523,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     let key = sharedKeys.current[peer];
     if(!key){ try { key = await getOrCreateSharedKey(peer); } catch {} }
     if(!key){
-      const msg: Message = { from_client: username, to_client: peer, text: text + ' (non criptato)', timestamp: ts, public_key: '', content: '', encrypted: false };
+      const msg: Message = { from_client: username, to_client: peer, text: text, timestamp: ts, public_key: '', content: '', encrypted: false };
       setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
       await queuedSendMessage({ command: `send_private:${peer}:${text}`, client_id: username });
       return;
@@ -559,7 +559,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     const content = await toBase64(file);
     const ts = new Date().toISOString();
     const key = await getOrCreateSharedKey(peer).catch(() => undefined);
-    if (!key) { const msg: Message = { from_client: username, to_client: peer, text: file.name + ' (non criptato)', timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false }; setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); return; }
+    if (!key) { const msg: Message = { from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false }; setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); return; }
     const msg: Message = { from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: true };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
     await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content, encrypted: true });
