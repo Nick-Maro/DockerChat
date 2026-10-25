@@ -15,6 +15,26 @@ venv/
 .vscode/
 
 .env
+.env.*
+!.env.template
+!.env.example
+**/dist/
+*.db
+*.sqlite*
+.coverage
+
+# Local private keys, credential exports and browser captures.
+*.key
+*.pem
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+credentials.json
+token.json
+**/.ssh/
+*.har
 
 volumes/
 **/build/
