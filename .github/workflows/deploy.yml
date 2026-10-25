@@ -1,49 +1,61 @@
 name: Deploy to VPS
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
     steps:
-      - name: Setup SSH key
+      - name: Configure the deployment identity
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH DEPLOY_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "Missing deployment configuration: $name" >&2
+              exit 1
+            fi
+          done
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || exit 1
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || exit 1
+          [[ "$DEPLOY_PATH" == /* ]] || exit 1
+          umask 077
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H vps.marottanicolo.me >> ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
-      - name: Deploy application on VPS
+      - name: Deploy application
         run: |
-          ssh gh-actions@vps.marottanicolo.me << 'EOF'
-            cd /home/shared/DockerChat
-            
-            # Force pull latest changes (overwrites local changes)
+          set -euo pipefail
+          printf -v quoted_path '%q' "$DEPLOY_PATH"
+          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $quoted_path" << 'REMOTE'
+            set -euo pipefail
+            cd -- "$1"
             git fetch origin main
             git reset --hard origin/main
-            
-            # Stop existing containers
             docker compose down || true
-            
-            # Build and start services
             docker compose up --build -d
-            
-            # Show running containers
             docker compose ps
-          EOF
+          REMOTE
 
-      - name: Health check
+      - name: Inspect deployed services
         run: |
+          set -euo pipefail
           sleep 30
-          ssh gh-actions@vps.marottanicolo.me << 'EOF'
-            cd /home/shared/DockerChat
-            echo "=== Container Status ==="
+          printf -v quoted_path '%q' "$DEPLOY_PATH"
+          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $quoted_path" << 'REMOTE'
+            set -euo pipefail
+            cd -- "$1"
             docker compose ps
-            echo "=== Container Logs (last 50 lines) ==="
-            docker compose logs --tail=50
-          EOF
+          REMOTE
