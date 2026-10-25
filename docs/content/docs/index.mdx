@@ -1,81 +1,89 @@
 ---
 title: DockerChat
-description: Docker-based real-time chat application with multi-layer protection, real-time monitoring, and encrypted communication.
+description: An educational self-hosted chat and network-security lab with Docker Compose, Bun WebSockets, Preact, Redis, NGINX, Go, and Flask.
 ---
 
-> **⚠️ Security Notice**: This is a development/educational project. Use responsibly and only on networks you own or have permission to analyze. Misuse of this tool may violate laws or terms of service.
+Build a local conversation, then inspect the services that carry it. DockerChat
+combines rooms, direct messages, attachments, message history, and an operations
+dashboard in a small multi-service project.
 
-## Quick Start
+This is an educational prototype. Public room content is visible to the server;
+private messages use browser-side encryption with server-distributed peer keys.
+The protocol is not independently audited. Start with synthetic conversations and
+read the [current security model](https://github.com/Nick-Maro/DockerChat/blob/main/SECURITY.md).
 
-### Prerequisites
-- **[Docker](https://www.docker.com/)**: >= 20.x
-- **[Docker Compose](https://docs.docker.com/compose/)**: >= 1.29.x
+## Start the local lab
 
-### Setup and Deployment
+Install Docker with Compose v2 and Python 3.10 or newer for the configuration helper.
 
 ```bash
-# Clone the repository
-git clone https://github.com/Nick-Maro/docker-mini-network
-cd docker-mini-network
-
-# Build and start all containers
+git clone https://github.com/Nick-Maro/DockerChat.git
+cd DockerChat
+python tools/setup_env.py
+docker compose config --quiet
 docker compose up --build -d
-
-# Verify all containers are running
-docker compose ps
 ```
 
-### Host Configuration
+The helper generates independent credentials in a private `.env` and refuses to
+overwrite an existing configuration. Published ports bind to `127.0.0.1` by
+default. Open a second browser profile or an incognito window to try another chat
+identity: tabs in one browser profile share keys and identity.
 
-Before starting the project, configure your system's hosts file:
+| Address | What to explore |
+| --- | --- |
+| `http://client.localhost` | Rooms, direct messages, attachments, and history |
+| `http://dashboard.localhost` | Operations dashboard; generated password is in `.env` |
+| `http://api.localhost/status` | Backend status |
 
-**Windows**: Edit `C:\Windows\System32\drivers\etc\hosts`
-**Linux/macOS**: Edit `/etc/hosts`
+If these hostnames do not resolve, add the following to your system's hosts file:
 
+```text
+127.0.0.1 client.localhost dashboard.localhost api.localhost
 ```
-127.0.0.1 client.localhost
-127.0.0.1 dashboard.localhost
-127.0.0.1 api.localhost
-```
 
-## Architecture Overview
+Use `/etc/hosts` on Linux/macOS or
+`C:\Windows\System32\drivers\etc\hosts` on Windows. Ports 80 and 443 must be free.
 
-### System Components
+## Follow the services
 
-| Service | Description | URL | Purpose |
-|---------|-------------|-----|---------|
-| `reverse-proxy` | NGINX reverse proxy with subdomain routing | - | Routes traffic to internal services |
-| `server` | Bun + TypeScript backend (scalable) | `api.localhost` | Primary application server |
-| `firewall` | Go-based programmable traffic filter | - | Advanced DDoS protection and rule-based filtering |
-| `client` | Web client (Preact + TypeScript) | `client.localhost` | Main user interface |
-| `dashboard` | Flask-based monitoring interface | `dashboard.localhost` | System monitoring, Redis management, and firewall control |
-| `redis` | In-memory key-value database | - | Caching and data storage |
+| Service | Responsibility |
+| --- | --- |
+| Preact + TypeScript | Browser interface, local identity, and encryption helpers |
+| NGINX | HTTP routing and WebSocket upgrades |
+| Bun + TypeScript | Signed commands, messages, and session handling |
+| Redis | Message persistence and shared service data |
+| Flask | Monitoring and administration |
+| Go | Separate traffic-filter endpoint and forwarding experiments |
 
-### Network Architecture
+The default browser connection reaches NGINX directly; the Go filter is a separate
+endpoint and does not protect every connection automatically. Its filtering is a
+learning feature, not a production DDoS guarantee.
 
-The system implements a multi-layered security architecture:
-- **Load Balancing**: NGINX reverse proxy distributes requests across backend instances
-- **Encryption**: RSA + ECDH cryptographic authentication
-- **Session Management**: Secure WebSocket sessions with nonce-based replay protection
-- **Data Persistence**: Redis for distributed storage with local fallback
-- **Real-time Communication**: WebSocket-based messaging with pub/sub patterns
+## Choose a starting point
 
-![Network Graph](assets/graph.jpg)
+- [Backend](/docs/backend/backend-servers): commands, sessions, and persistence.
+- [Browser client](/docs/client/client): interface and client-side behavior.
+- [Dashboard](/docs/dashboard/dashboard): monitoring and administration.
+- [Traffic filter](/docs/firewall/firewall): forwarding and filtering experiments.
+- [Cryptography notes](/docs/crypto/cryptography): protocol background; the
+  [repository security model](https://github.com/Nick-Maro/DockerChat/blob/main/SECURITY.md)
+  records current implementation boundaries.
+- [WebSocket API](/docs/api/websocket): message and command reference.
+- [Deployment notes](/docs/deployment/deployment) and
+  [troubleshooting](/docs/troubleshooting/troubleshooting).
 
-## Documentation Structure
+Some deeper guides describe the earlier prototype. For current setup, wire-format
+requirements, limitations, and verification commands, use the
+[repository README](https://github.com/Nick-Maro/DockerChat#readme) and
+[contribution guide](https://github.com/Nick-Maro/DockerChat/blob/main/CONTRIBUTING.md).
 
-- [Backend Server](./backend/backend-servers.mdx) - Core application server architecture
-- [Dashboard](./frontend/dashboard.mdx) - Web-based monitoring and management interface
-- [Firewall](./firewall/firewall.mdx) - Programmable traffic filtering and DDoS protection
-- [Security](./security/cryptography.mdx) - Cryptographic authentication and session management
-- [API Reference](./api/websocket.mdx) - Complete WebSocket protocol documentation
-- [Deployment](./deployment/deployment.mdx) - Production deployment and scaling guide
-- [Troubleshooting](./troubleshooting/troubleshooting.mdx) - Common issues and debugging guide
+## Contribute or report a problem
 
-## License
+Start with a focused improvement: browser integration tests, accessibility,
+dashboard permissions, CSRF protection, shared replay protection, or clearer
+peer-key verification. Use synthetic input in bug reports; never attach credentials
+or chat history.
 
-This project is licensed under the MIT License. See the LICENSE file for details.
-
----
-
-*Last updated: August 31, 2025*
+- [Report a bug](https://github.com/Nick-Maro/DockerChat/issues/new?template=bug_report.yml).
+- [Suggest a feature](https://github.com/Nick-Maro/DockerChat/issues/new?template=feature_request.yml).
+- [Read the MIT license and author credits](https://github.com/Nick-Maro/DockerChat/blob/main/LICENSE).

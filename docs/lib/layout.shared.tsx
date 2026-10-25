@@ -25,6 +25,12 @@ export function baseOptions(): BaseLayoutProps {
       ),
     },
     // see https://fumadocs.dev/docs/ui/navigation/links
-    links: [],
+    links: [
+      {
+        text: 'GitHub',
+        url: 'https://github.com/Nick-Maro/DockerChat',
+        external: true,
+      },
+    ],
   };
 }

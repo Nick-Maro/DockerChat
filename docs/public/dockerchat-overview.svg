@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">DockerChat — a self-hosted chat and network-security lab</title>
+  <desc id="description">A Preact browser client connects through NGINX to a Bun WebSocket backend and Redis. A Flask dashboard observes operations. A separate Go traffic-filter endpoint can forward to NGINX. The default browser connection does not pass through the Go filter.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#0c1729"/><stop offset="1" stop-color="#142b45"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#8bc7ee" stroke-opacity=".05"/></pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="m0 0 10 5-10 5Z" fill="#6fc8ef"/></marker>
+  </defs>
+  <rect width="1200" height="630" rx="24" fill="url(#background)"/>
+  <rect width="1200" height="630" rx="24" fill="url(#grid)"/>
+  <g font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+    <text x="56" y="65" font-size="14" font-weight="650" letter-spacing="3" fill="#72cdef">CHAT · NETWORK SECURITY · LOCAL LAB</text>
+    <text x="56" y="132" font-size="58" font-weight="750" letter-spacing="-2" fill="#f4f8ff">DockerChat</text>
+    <text x="58" y="171" font-size="22" fill="#bbcbdd">Start a conversation. Explore the services behind it.</text>
+    <g fill="none" stroke="#6fc8ef" stroke-width="2.5" marker-end="url(#arrow)">
+      <path d="M275 285H327"/>
+      <path d="M558 285H608"/>
+      <path d="M849 285H901"/>
+      <path d="M442 339V433H607"/>
+      <path d="M849 433H1016V339"/>
+      <path d="M275 433H300V315H327" stroke-dasharray="6 6"/>
+    </g>
+    <g fill="#152e48" stroke="#416381" stroke-width="1.5">
+      <rect x="56" y="231" width="219" height="108" rx="14"/>
+      <rect x="331" y="231" width="227" height="108" rx="14"/>
+      <rect x="612" y="231" width="237" height="108" rx="14"/>
+      <rect x="905" y="231" width="239" height="108" rx="14"/>
+      <rect x="56" y="379" width="219" height="108" rx="14" stroke-dasharray="6 5"/>
+      <rect x="612" y="379" width="237" height="108" rx="14"/>
+    </g>
+    <g font-size="23" font-weight="700" fill="#f4f8ff">
+      <text x="80" y="274">Browser client</text>
+      <text x="355" y="274">Reverse proxy</text>
+      <text x="636" y="274">WebSocket API</text>
+      <text x="929" y="274">Message storage</text>
+      <text x="80" y="422">Traffic filter</text>
+      <text x="636" y="422">Operations UI</text>
+    </g>
+    <g font-size="17" fill="#aebfd3">
+      <text x="80" y="307">Preact · TypeScript</text>
+      <text x="355" y="307">NGINX</text>
+      <text x="636" y="307">Bun · TypeScript</text>
+      <text x="929" y="307">Redis</text>
+      <text x="80" y="455">Go · separate endpoint</text>
+      <text x="636" y="455">Flask · Python</text>
+    </g>
+    <text x="58" y="529" font-size="16" fill="#aebfd3">One Docker Compose lab. Rooms, private messages, attachments, and observability.</text>
+    <path d="M56 557H1144" stroke="#416381"/>
+    <text x="58" y="590" font-size="15" fill="#8fb1ce">Educational prototype · Use synthetic conversations · Read the security model</text>
+    <text x="1144" y="590" text-anchor="end" font-size="15" fill="#72cdef">github.com/Nick-Maro/DockerChat</text>
+  </g>
+</svg>

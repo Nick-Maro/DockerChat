@@ -1,45 +1,48 @@
-# docs-docker-mini-network
+# DockerChat documentation
 
-This is a Next.js application generated with
-[Create Fumadocs](https://github.com/fuma-nama/fumadocs).
+This Next.js/Fumadocs site explains the educational DockerChat lab. The
+[repository README](../README.md) and [security model](../SECURITY.md) describe
+the current implementation and quick start.
 
-Run development server:
+## Develop locally
 
-```bash
+```sh
+cd docs
+npm ci
 npm run dev
-# or
-pnpm dev
-# or
-yarn dev
 ```
 
-Open http://localhost:3000 with your browser to see the result.
+Open `http://localhost:3000`. Edit `content/docs/` for the guides,
+`app/(home)/page.tsx` for the landing page, and `app/layout.tsx` for search/share
+metadata. The original architecture preview is in `public/dockerchat-overview.svg`.
+Its PNG export provides a 1200×630 sharing image; it contains no real conversations
+or credentials.
 
-## Explore
+## Check a change
 
-In the project, you can see:
+```sh
+npm run build:local
+```
 
-- `lib/source.ts`: Code for content source adapter, [`loader()`](https://fumadocs.dev/docs/headless/source-api) provides the interface to access your content.
-- `lib/layout.shared.tsx`: Shared options for layouts, optional but preferred to keep.
+The build creates a static site under `out/`. The YAML helper may create `.backup`
+files when normalizing older frontmatter; keep generated output and backups out
+of a source commit. The GitHub documentation workflow builds changes under
+`docs/` and publishes the resulting site through GitHub Pages.
 
-| Route                     | Description                                            |
-| ------------------------- | ------------------------------------------------------ |
-| `app/(home)`              | The route group for your landing page and other pages. |
-| `app/docs`                | The documentation layout and pages.                    |
-| `app/api/search/route.ts` | The Route Handler for search.                          |
+For a GitHub project Pages build, set `NEXT_PUBLIC_BASE_PATH=/DockerChat` before
+building. The workflow gets this prefix from the Pages configuration; local
+development leaves the variable unset. Asset URLs and Next.js links retain the
+prefix, so the same site works locally and at the repository's Pages URL.
 
-### Fumadocs MDX
+When adding a guide, use its `/docs/...` route in documentation links rather than
+the source `.mdx` filename. Keep security claims aligned with `SECURITY.md`, and
+use original diagrams or synthetic examples instead of private operational data.
 
-A `source.config.ts` config file has been included, you can customise different options like frontmatter schema.
+## Dependency scope
 
-Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
-
-## Learn More
-
-To learn more about Next.js and Fumadocs, take a look at the following
-resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js
-  features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Fumadocs](https://fumadocs.vercel.app) - learn about Fumadocs
+Run `npm audit` from this directory when maintaining the documentation toolchain;
+the chat client's audit does not cover this separate lockfile. The site is exported
+as static files, rather than deployed as a Next.js application server. Remaining
+advisories in the older Fumadocs/Next.js and Mermaid dependency chains require a
+coordinated major-version migration; do not apply `npm audit fix --force` without
+checking that the guides and static export still work.

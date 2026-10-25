@@ -1,5 +1,7 @@
 # DockerChat
 
+### Self-hosted chat, browser cryptography, and a Docker Compose network lab
+
 **Open two browser windows. Start a conversation. Explore the network behind it.**
 
 DockerChat is a self-hosted chat and network-security lab: a Preact interface, a Bun WebSocket backend, Redis storage, an NGINX reverse proxy, a Go traffic filter, and a Flask operations dashboard, brought together with Docker Compose.
@@ -7,7 +9,9 @@ DockerChat is a self-hosted chat and network-security lab: a Preact interface, a
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Checks](https://github.com/Nick-Maro/DockerChat/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick-Maro/DockerChat/actions/workflows/ci.yml)
 
-[Get started](#get-started) · [How it fits together](#how-it-fits-together) · [Contribute](CONTRIBUTING.md) · [Security model](SECURITY.md)
+[Get started](#get-started) · [Documentation](docs/content/docs/index.mdx) · [Architecture](#how-it-fits-together) · [Contribute](CONTRIBUTING.md) · [Security model](SECURITY.md)
+
+![DockerChat service overview: Preact through NGINX to Bun and Redis, with a Flask dashboard and a separate Go traffic-filter endpoint.](docs/public/dockerchat-overview.svg)
 
 ## Why try it?
 
@@ -122,6 +126,10 @@ Use a Python virtual environment for the dashboard dependencies. The test suite 
 ## Make it better
 
 Good first contributions include browser integration tests, accessibility, dashboard authorization and CSRF protection, shared replay protection for multiple backend replicas, and clearer peer-key verification. Start with a focused issue or small pull request. Reports with reproduction steps are especially useful.
+
+- [Report a reproducible bug](https://github.com/Nick-Maro/DockerChat/issues/new?template=bug_report.yml).
+- [Propose a focused improvement](https://github.com/Nick-Maro/DockerChat/issues/new?template=feature_request.yml).
+- [Find the right service and test to work on](CONTRIBUTING.md#useful-entry-points).
 
 If DockerChat helps you learn or build something, a star and a short note about what you tried help other people find it.
 
