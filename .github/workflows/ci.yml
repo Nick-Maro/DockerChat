@@ -1,0 +1,62 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client-and-signatures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm test
+      - run: npm --prefix client ci
+      - run: npm --prefix client run typecheck
+      - run: npm --prefix client run build
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - run: bun install --frozen-lockfile
+        working-directory: backend-servers/server
+      - run: bun test tests/command-handler.test.ts
+      - run: bun run typecheck
+        working-directory: backend-servers/server
+
+  dashboard-and-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: dashboard/requirements.txt
+      - run: python -m pip install -r dashboard/requirements.txt
+      - run: python -m unittest discover -s tests -p 'test_*.py'
+      - run: python tools/setup_env.py
+      - run: docker compose config --quiet
+
+  firewall:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+          cache: false
+      - run: go test ./...
+        working-directory: firewall
