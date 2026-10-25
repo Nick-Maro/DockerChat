@@ -75,6 +75,11 @@ export interface WSResponse {
     message: string;
     status?: string;
     error?: string;
+    event?: string;
+    target_user?: string;
+    ecdh_key?: string;
+    user_online?: boolean;
+    same_room?: boolean;
     client_id?: string;
     room_name?: string;
     message_text?: string;

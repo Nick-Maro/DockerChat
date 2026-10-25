@@ -180,7 +180,8 @@ export async function decryptMessage(sharedKey: CryptoKey, encryptedBase64: stri
 export async function fingerprintKey(sharedKey: CryptoKey): Promise<string> {
   try{
     const raw = await crypto.subtle.exportKey('raw', sharedKey);
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
+    const digest = await crypto.subtle.digest('SHA-256', raw);
+    const b64 = arrayBufferToBase64(digest);
     return b64.substring(0, 24);
   }
   catch(e){

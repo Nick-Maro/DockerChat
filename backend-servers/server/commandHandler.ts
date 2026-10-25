@@ -7,7 +7,7 @@ import {CryptoAuth} from "./utils/cryptography/auth.ts";
 import {AuthenticationMiddleware} from "./utils/cryptography/auth-middleware.ts"
 import {SecureSession} from "./utils/cryptography/session.ts"
 import {MessageFilter} from "./src/filters/MessageFilter.ts";
-import type {Client, Room, WebSocketData, WSMessage, WSResponse} from './types';
+import type {Client, PrivateMessage, Room, WebSocketData, WSMessage, WSResponse} from './types';
 
 export class CommandHandler {
     private messageFilter: MessageFilter;
@@ -58,6 +58,10 @@ export class CommandHandler {
         }
         catch (diagErr) { printDebug('[CMD] Failed to log incoming preview:' + diagErr, DebugLevel.WARN); }
 
+        if (!data || typeof data !== 'object' || Array.isArray(data) || typeof data.command !== 'string') {
+            ws.send(JSON.stringify({ error: "Invalid command message" }));
+            return;
+        }
         const { command } = data;
         let { client_id } = data;
 
@@ -124,8 +128,46 @@ export class CommandHandler {
             return;
         }
 
+        const authResult = await AuthenticationMiddleware.authenticate(
+            data,
+            ws.data.clientId || '',
+            async (clientId: string) => {
+                const client = await this.dataManager.getClient(clientId);
+                return client?.public_key || null;
+            }
+        );
+        if(!authResult.success) {
+            this.sendResponse(ws, {
+                command: data.command,
+                error: `Authentication failed: ${authResult.error}`,
+                debug: debug_info
+            });
+            return;
+        }
+        const clientId = authResult.clientId!;
+        client_id = clientId;
+        ws.data.clientId = clientId;
+        const clientForSession = await this.dataManager.getClient(clientId);
+        if (clientForSession?.public_key) {
+            SecureSession.bindSession(ws.data.wsId, clientId, clientForSession.public_key);
+        } else if (command !== 'upload_public_key') {
+            this.sendResponse(ws, {
+                command: data.command,
+                error: "Could not establish secure session: client key not found.",
+                debug: debug_info
+            });
+            return;
+        }
+
+        wsClientMap.set(clientId, ws);
+        await this.dataManager.setClientOnline(clientId, true, true);
+
         if (command === "upload_ecdh_key") {
             const username = data.username;
+            if (username !== clientId) {
+                this.sendResponse(ws, { command, error: "Cannot change another client's ECDH key" });
+                return;
+            }
             if (!username || !/^[a-zA-Z0-9_-]{3,16}$/.test(username)) {
                 this.sendResponse(ws, { command, error: "Invalid username format", debug: debug_info });
                 return;
@@ -184,47 +226,6 @@ export class CommandHandler {
             return;
         }
 
-        let authResult = await AuthenticationMiddleware.authenticate(
-            data,
-            ws.data.clientId || '',
-            async (clientId: string) => {
-                const client = await this.dataManager.getClient(clientId);
-                return client?.public_key || null;
-            }
-        );
-        if(!authResult.success && authResult.error === 'Client ID mismatch with WebSocket session') {
-            if(typeof data.client_id === 'string'){
-                const publicKey = await this.dataManager.getClient(data.client_id).then(c => c?.public_key || null);
-                if(publicKey){
-                    const verify = CryptoAuth.verifyMessage(data, data.client_id, publicKey);
-                    if(verify.valid){
-                        ws.data.clientId = data.client_id;
-                        authResult = { success: true, clientId: data.client_id };
-                    }
-                }
-            }
-        }
-        if(!authResult.success) {
-            this.sendResponse(ws, {
-                command: data.command,
-                error: `Authentication failed: ${authResult.error}`,
-                debug: debug_info
-            });
-            return;
-        }
-        const clientId = authResult.clientId!;
-        ws.data.clientId = clientId;
-        const clientForSession = await this.dataManager.getClient(clientId);
-        if (clientForSession?.public_key) {
-            SecureSession.bindSession(ws.data.wsId, clientId, clientForSession.public_key);
-        } else if (command !== 'upload_public_key') {
-            this.sendResponse(ws, {
-                command: data.command,
-                error: "Could not establish secure session: client key not found.",
-                debug: debug_info
-            });
-            return;
-        }
 
         if (!data.client_id) {
             ws.send(JSON.stringify({ command, error: "Missing client_id" }));
@@ -294,7 +295,7 @@ export class CommandHandler {
                     break;
                 }
 
-                const sameRoom = currentClient.room_id && targetClient.room_id === currentClient.room_id;
+                const sameRoom = Boolean(currentClient.room_id && targetClient.room_id === currentClient.room_id);
                 response = {
                     ...response,
                     message: `ECDH key retrieved for user '${target_username}'`,
@@ -478,14 +479,14 @@ export class CommandHandler {
                 break;
             }
             case command.startsWith("send_private:"): {
-                const parts = command.split(":", 3);
+                const parts = command.split(":");
                 if (parts.length < 3) {
                     response.error = "Command format: send_private:CLIENT_USERNAME:MESSAGE";
                     break;
                 }
 
-                const to_client_id = parts[1];
-                let message_text = parts[2];
+                const to_client_id = parts[1]!;
+                let message_text = parts.slice(2).join(":");
                 const reply_to = data?.reply_to;
                 const reply_to_text = data?.reply_to_text;
                 const reply_to_user = data?.reply_to_user;
@@ -557,18 +558,15 @@ export class CommandHandler {
                     timestamp: new Date().toISOString(),
                     verified: true,
                     file: isFile,
+                    filename: isFile ? filename : undefined,
+                    mimetype: isFile ? mimetype : undefined,
                     message_id: message_id,
                     encrypted: data?.encrypted === true,
+                    content: isFile || data?.encrypted === true ? content : undefined,
                     reply_to: reply_to,
                     reply_to_text: reply_to_text,
                     reply_to_user: reply_to_user
                 };
-
-                if (isFile) {
-                    messageData.filename = filename;
-                    messageData.mimetype = mimetype;
-                    messageData.content = content;
-                }
 
                 if(data?.sk_fingerprint) (messageData as any).sk_fingerprint = data.sk_fingerprint;
                 if(data?.sender_ecdh_public) (messageData as any).sender_ecdh_public = data.sender_ecdh_public;
@@ -707,12 +705,16 @@ export class CommandHandler {
                         response.error = "Message not found";
                         break;
                     }
+                    if (targetMessage.from_client !== clientId) {
+                        response.error = "You can only delete your own messages";
+                        break;
+                    }
 
                     const updatedMessage: Partial<PrivateMessage> = {
                         text: "Message deleted",
                         encrypted: false,
                         file: false,
-                        content: null
+                        content: ''
                     };
 
                     const success = await this.dataManager.updatePrivateMessage(messageIdTrim, updatedMessage);

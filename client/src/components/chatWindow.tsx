@@ -4,7 +4,7 @@ import styles from '../css/chatWindow.module.css';
 import { useChat } from '../shared/chatContext';
 import { useClient } from '../shared/authContext';
 import { Message } from "../types";
-import { getMessageType } from '../shared/fileHelpers';
+import { getMessageType, safeAttachmentUrls } from '../shared/fileHelpers';
 import attachWhite from '../assets/icons/attach-white.svg';
 import sendWhite from '../assets/icons/send-white.svg';
 
@@ -160,11 +160,11 @@ export const ChatWindow = memo(() => {
       else setUploadError("No chat selected");
     }
     catch(error){
-      setUploadError("File upload failed");
+      setUploadError(error instanceof Error ? error.message : "File upload failed");
     }
   }, [currentRoom, currentClient, sendFile, sendPrivateFile]);
 
-  const handleSendMessage = useCallback(() => {
+  const handleSendMessage = useCallback(async () => {
     const text = inputRef.current?.value?.trim();
     if(!text) return;
     
@@ -179,10 +179,16 @@ export const ChatWindow = memo(() => {
       messageText = replyPrefix + text;
     }
     
-    if(currentRoom){
-      sendMessage(messageText);
-    } else if(currentClient){
-      sendPrivateMessage(messageText);
+    try {
+      setUploadError(null);
+      if(currentRoom){
+        sendMessage(messageText);
+      } else if(currentClient){
+        await sendPrivateMessage(messageText);
+      }
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Message could not be sent.');
+      return;
     }
     
     if(inputRef.current) inputRef.current.value = '';
@@ -211,19 +217,21 @@ export const ChatWindow = memo(() => {
     const isFile = msg.file || (msg.filename && msg.content);
     
     if (isFile && msg.filename) {
+      if (msg.encrypted) return <p>{msg.filename} (encrypted file — key unavailable)</p>;
       if (msg.content) {
-        const messageType = getMessageType(msg.mimetype);
-        return messageType === "image" ? (
+        const urls = safeAttachmentUrls(msg.content);
+        if (!urls) return <p>{msg.filename} (invalid attachment data)</p>;
+        return urls.preview ? (
           <div className={styles.imageMessage}>
-            <a href={msg.content} download={msg.filename} target="_blank" rel="noopener noreferrer">
-              <img src={msg.content} alt={msg.filename} />
+            <a href={urls.download} download={msg.filename} rel="noopener noreferrer">
+              <img src={urls.preview} alt={msg.filename} />
             </a>
             <span className={styles.fileName}>{msg.filename}</span>
           </div>
         ) : (
           <p className={`${styles.fileMessage} flex`}>
             <span>📎</span>
-            <a href={msg.content} download={msg.filename}>
+            <a href={urls.download} download={msg.filename}>
               <p>{msg.filename}</p>
             </a>
           </p>

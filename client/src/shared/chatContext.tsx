@@ -247,14 +247,19 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
               const processMessages = async () => {
                 return Promise.all(relevant.map(async (m: any) => {
                   const isFile = !!m.file;
-                  const content = m.content || '';
+                  let content = m.content || '';
                   let text = m.text || '';
                   let encrypted = !!m.encrypted;
                   if(encrypted){
                     const peer = m.from_client === username ? m.to_client : m.from_client;
                     const key = await getOrCreateSharedKey(peer);
                     if(key){
-                      try { text = await decryptMessage(key, content || text); encrypted = false; }
+                      try {
+                        const plaintext = await decryptMessage(key, content || text);
+                        if (isFile) { content = plaintext; text = m.filename || 'File'; }
+                        else text = plaintext;
+                        encrypted = false;
+                      }
                       catch { text = '[Encrypted message - unable to decrypt]'; }
                     }
                     else text = '[Encrypted message - key not available]';
@@ -382,16 +387,16 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 const isFile = !!m.file && !!m.content;
                 let text = m.text || '';
                 let encrypted = !!m.encrypted;
+                let content = m.content || '';
 
-                if(isFile){
-                  text = m.filename || 'File';
-                  encrypted = false;
-                }
-                else if(encrypted){
+                if(encrypted){
                   const peer = m.from_client === username ? m.to_client : m.from_client;
                   const res = await tryDecryptForPeer(peer, m.content || m.text, m.sk_fingerprint, m.sender_ecdh_public);
-                  text = res.text;
+                  if (isFile && res.ok) { content = res.text; text = m.filename || 'File'; }
+                  else text = res.text;
                   encrypted = !res.ok;
+                } else if (isFile) {
+                  text = m.filename || 'File';
                 }
 
                 const pm: Message = {
@@ -401,7 +406,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                   text,
                   timestamp: m.timestamp || new Date().toISOString(),
                   public_key: '',
-                  content: m.content || '',
+                  content,
                   encrypted,
                   file: isFile,
                   filename: m.filename,
@@ -412,8 +417,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
                 if(m.from_client === username){
                   setPrivateMessages(prev => {
                     const list = prev[m.to_client] || [];
-                    const filtered = list.filter(msg => !msg.id.startsWith('local-'));
-                    return { ...prev, [m.to_client]: list.map(msg => msg.id.startsWith('local-') ? pm : msg) };
+                    return { ...prev, [m.to_client]: list.map(msg => msg.id?.startsWith('local-') ? pm : msg) };
                   });
                 } else {
                   setPrivateMessages(prev => {
@@ -523,10 +527,7 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     let key = sharedKeys.current[peer];
     if(!key){ try { key = await getOrCreateSharedKey(peer); } catch {} }
     if(!key){
-      const msg: Message = { from_client: username, to_client: peer, text: text, timestamp: ts, public_key: '', content: '', encrypted: false };
-      setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
-      await queuedSendMessage({ command: `send_private:${peer}:${text}`, client_id: username });
-      return;
+      throw new Error('Encryption key unavailable. Reconnect to the recipient and try again.');
     }
     const encrypted = await encryptMessage(key, text);
     let sk_fp = '';
@@ -559,10 +560,13 @@ export const ChatProvider = ({ children }: { children: ComponentChildren }) => {
     const content = await toBase64(file);
     const ts = new Date().toISOString();
     const key = await getOrCreateSharedKey(peer).catch(() => undefined);
-    if (!key) { const msg: Message = { from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false }; setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] })); await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content }); return; }
-    const msg: Message = { from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: true };
+    if (!key) throw new Error('Encryption key unavailable. The file was not sent.');
+    const ciphertext = await encryptMessage(key, content);
+    const senderPublic = await getLocalECDHPublic();
+    const localId = crypto.randomUUID();
+    const msg: Message = { id: localId, message_id: localId, from_client: username, to_client: peer, text: file.name, timestamp: ts, public_key: '', content, file: true, filename: file.name, mimetype: file.type, encrypted: false };
     setPrivateMessages(prev => ({ ...prev, [peer]: [...(prev[peer]||[]), msg] }));
-    await queuedSendMessage({ command: `send_private:${peer}:${file.name}`, client_id: username, file: true, filename: file.name, mimetype: file.type, content, encrypted: true });
+    await queuedSendMessage({ command: `send_private:${peer}:ENC`, client_id: username, file: true, filename: file.name, mimetype: file.type, content: ciphertext, encrypted: true, message_id: localId, sender_ecdh_public: senderPublic });
   };
 
   const sendFile = async (file: File) => {

@@ -225,12 +225,13 @@ class Storage {
                     const clientsData = await this.redis.mGet(clientKeys);
 
                     clientsData.forEach((clientJson, index) => {
-                        if (clientJson) {
+                        const clientId = clients[index];
+                        if (clientJson && clientId) {
                             const client = JSON.parse(clientJson) as Client;
                             client.room_id = null;
-                            pipeline.set(this.REDIS_KEYS.CLIENT(clients[index]), JSON.stringify(client));
-                            this.clientCache.set(clients[index], { data: client, timestamp: Date.now() });
-                            const localClient = this.localClients.get(clients[index]);
+                            pipeline.set(this.REDIS_KEYS.CLIENT(clientId), JSON.stringify(client));
+                            this.clientCache.set(clientId, { data: client, timestamp: Date.now() });
+                            const localClient = this.localClients.get(clientId);
                             if (localClient) localClient.room_id = null;
                         }
                     });
@@ -359,13 +360,15 @@ class Storage {
                 const pipeline = this.redis.multi();              
                 for (let i = 0; i < clientIds.length; i++) {
                     const clientJson = clientsData[i];
-                    if(clientJson){
+                    const clientId = clientIds[i];
+                    const clientKey = clientKeys[i];
+                    if(clientJson && clientId && clientKey){
                         try{
                             const client = JSON.parse(clientJson as string) as Client;
                             client.online = false;
-                            pipeline.set(clientKeys[i], JSON.stringify(client));                         
+                            pipeline.set(clientKey, JSON.stringify(client));
                             if (client.room_id) {
-                                pipeline.sRem(this.REDIS_KEYS.CLIENT_ROOM_INDEX(client.room_id), clientIds[i]);
+                                pipeline.sRem(this.REDIS_KEYS.CLIENT_ROOM_INDEX(client.room_id), clientId);
                             }
                         }
                         catch(err){ 
@@ -521,10 +524,11 @@ class Storage {
                 const clientsData = await this.redis.mGet(clientKeys);
 
                 clientsData.forEach((clientData, index) => {
-                    if (clientData) {
+                    const clientId = clientIds[index];
+                    if (clientData && clientId) {
                         const client = JSON.parse(clientData) as Client;
-                        if (client.ecdh_key) result.set(clientIds[index], client.ecdh_key);
-                        this.clientCache.set(clientIds[index], { data: client, timestamp: Date.now() });
+                        if (client.ecdh_key) result.set(clientId, client.ecdh_key);
+                        this.clientCache.set(clientId, { data: client, timestamp: Date.now() });
                     }
                 });
             } catch (error) {
@@ -584,8 +588,9 @@ class Storage {
                     
                     const results = await pipeline.exec();
                     
-                    if(!results || results.length === 0 || results[0]?.error)
-                        throw new Error(`Pipeline execution failed: ${results?.[0]?.error || 'Unknown error'}`);
+                    const pipelineError = results?.find(result => result instanceof Error);
+                    if(!results || results.length === 0 || pipelineError)
+                        throw new Error(`Pipeline execution failed: ${pipelineError instanceof Error ? pipelineError.message : 'Unknown error'}`);
                     console.log(`[INFO] Message ${trimmedMessageId} deleted from Redis successfully`);
                 }
                 catch(error){ console.error(`[ERROR] Failed to delete message from Redis: ${error}`); }

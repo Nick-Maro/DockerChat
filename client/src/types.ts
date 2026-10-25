@@ -34,7 +34,7 @@ export type ChatContextType = {
   leaveRoom: () => void;
   createRoom: (roomName: string) => void;
   sendMessage: (text: string) => void;
-  sendPrivateMessage: (text: string) => void;
+  sendPrivateMessage: (text: string) => Promise<void>;
   fetchPrivateMessages: (clientId: string) => void;
   sendFile: (file: File) => void;
   sendPrivateFile: (file: File) => void;
@@ -106,5 +106,5 @@ export interface Message {
   reply_to?: string;
   reply_to_text?: string;
   reply_to_user?: string;
-  message_id: string;
+  message_id?: string;
 }

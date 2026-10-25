@@ -7,7 +7,7 @@ export const CONFIG = {
     CLIENT_TTL: 35, // 35s
     ROOM_TTL: 7200, // 2h
     MESSAGE_TTL: 86400, // 24h
-    DEBUG: process.env.DEBUG || false,
+    DEBUG: process.env.DEBUG?.toLowerCase() === 'true',
 
     METRICS: {
         ENABLED: true,
@@ -15,8 +15,10 @@ export const CONFIG = {
     },
 
     SERVER: {
-        PORT: process.env.PORT ? parseInt(process.env.PORT) : 5000,
-        HOST: process.env.HOST || '0.0.0.0'
+        PORT: parseInt(process.env.SERVER_PORT || process.env.PORT || '5000'),
+        HOST: process.env.HOST || '0.0.0.0',
+        // A 10 MiB file becomes a data URL, then AES ciphertext, then base64.
+        MAX_PAYLOAD_LENGTH: 24 * 1024 * 1024
     },
 
     REDIS: {

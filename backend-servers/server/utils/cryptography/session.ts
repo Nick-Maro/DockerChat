@@ -3,7 +3,7 @@ export class SecureSession {
         wsId: string;
         clientId: string;
         publicKey: string;
-        ecdhKey: string;
+        ecdhKey?: string;
         lastActivity: number;
     }>();
 

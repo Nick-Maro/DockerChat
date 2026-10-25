@@ -3,6 +3,7 @@ import {storage} from "./storage";
 import {DataManager} from "./dataManager";
 import {CommandHandler} from "./commandHandler";
 import {CONFIG} from "./config";
+import {SecureSession} from "./utils/cryptography/session.ts";
 import {DebugLevel, generateUUID, isExpired, printDebug} from "./utils/utils.ts";
 import type {ServerStatus, WebSocketData} from './types';
 
@@ -34,33 +35,13 @@ export const websocket: WebSocketHandler<WebSocketData> = {
             return;
         }
 
-        if(data.type === 'ping'){
+        if(data && typeof data === 'object' && data.type === 'ping'){
             ws.send(JSON.stringify({
                 type: 'pong',
                 timestamp: data.timestamp,
                 server_time: Date.now()
             }));
-            if(data.client_id) {
-                ws.data.clientId = data.client_id;
-                ws.data.lastPong = Date.now();
-                if (!wsClientMap.has(data.client_id) || wsClientMap.get(data.client_id)?.data.wsId !== ws.data.wsId) {
-                    dataManager.setClientOnline(data.client_id, true);
-                    dataManager.updateClientLastSeen(data.client_id);
-                    wsClientMap.set(data.client_id, ws);
-                }
-            }
             return;
-        }
-
-        if (data.client_id) {
-            ws.data.clientId = data.client_id;
-            const existingSocket = wsClientMap.get(data.client_id);
-            if (!existingSocket || existingSocket.data.wsId !== ws.data.wsId) {
-                printDebug(`[WS] Re-associating clientId=${data.client_id} with new socket.`, DebugLevel.LOG);
-                dataManager.setClientOnline(data.client_id, true);
-                dataManager.updateClientLastSeen(data.client_id);
-                wsClientMap.set(data.client_id, ws);
-            }
         }
 
         commandHandler.handle(ws, message, wsClientMap);
@@ -77,7 +58,11 @@ export const websocket: WebSocketHandler<WebSocketData> = {
         printDebug(`[WS] Connection closed: code=${code}, reason=${reason}, clientId=${ws.data.clientId}`, DebugLevel.LOG);
         if(ws.data.pingInterval) clearInterval(ws.data.pingInterval);
         const clientId = ws.data.clientId;
-        if(clientId) dataManager.setClientOnline(clientId, false);
+        if(clientId && wsClientMap.get(clientId)?.data.wsId === ws.data.wsId) {
+            wsClientMap.delete(clientId);
+            dataManager.setClientOnline(clientId, false);
+        }
+        SecureSession.removeSession(ws.data.wsId);
     },
 };
 
@@ -143,9 +128,8 @@ const server: Server = Bun.serve({
     websocket: {
         ...websocket,
         idleTimeout: 120,
-        maxBackpressure: 64 * 1024,
-        maxCompressedSize: 64 * 1024,
-        maxPayloadLength: 16 * 1024 * 1024,
+        backpressureLimit: 64 * 1024,
+        maxPayloadLength: CONFIG.SERVER.MAX_PAYLOAD_LENGTH,
     },
 });
 

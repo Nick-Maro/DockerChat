@@ -111,6 +111,9 @@ export class DataManager {
         mimetype?: string,
         content?: string,
         encrypted?: boolean,
+        reply_to?: string,
+        reply_to_text?: string,
+        reply_to_user?: string,
     ): Promise<string> {
         const message: PrivateMessage = {
             id: message_id,
@@ -124,7 +127,10 @@ export class DataManager {
             filename: filename || "",
             mimetype: mimetype || "",
             content: content || "",
-            encrypted: encrypted || false
+            encrypted: encrypted || false,
+            reply_to,
+            reply_to_text,
+            reply_to_user
         };
         await storage.addPrivateMessage(message);
         return message_id;

@@ -21,6 +21,7 @@ export function printDebug(message: string, level: DebugLevel) {
     if (CONFIG.DEBUG) {
         switch(level) {
             case DebugLevel.LOG:
+            case DebugLevel.INFO:
                 console.log(message);
                 break;
             case DebugLevel.WARN:
@@ -38,5 +39,6 @@ export function printDebug(message: string, level: DebugLevel) {
 export enum DebugLevel {
     LOG,
     WARN,
-    ERROR
+    ERROR,
+    INFO
 }
