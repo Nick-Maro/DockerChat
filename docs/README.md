@@ -34,8 +34,10 @@ building. The workflow gets this prefix from the Pages configuration; local
 development leaves the variable unset. Asset URLs and Next.js links retain the
 prefix, so the same site works locally and at the repository's Pages URL.
 
-When adding a guide, use its `/docs/...` route in documentation links rather than
-the source `.mdx` filename. Keep security claims aligned with `SECURITY.md`, and
+When linking between MDX guides, use relative source paths such as
+`./backend/backend-servers.mdx`. The existing `createRelativeLink` component
+converts them into site routes, while the same links work in the GitHub source
+guide. Use `/docs/...` routes in React navigation components. Keep security claims aligned with `SECURITY.md`, and
 use original diagrams or synthetic examples instead of private operational data.
 
 ## Dependency scope
