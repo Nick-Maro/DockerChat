@@ -1,96 +1,132 @@
-# Network Security Infrastructure Project
-A comprehensive Docker-based network security infrastructure implementing multiple security layers and monitoring capabilities.
+# DockerChat
 
-> [!WARNING]  
-> Use responsibly and only on networks you own or have permission to analyze. Misuse of this tool may violate laws or terms of service.
+**Open two browser windows. Start a conversation. Explore the network behind it.**
 
-## System Requirements
-- **RAM**: 2GB recommended (minimum requirements may work with 1GB but not tested)
-- **CPU**: 1 vCPU is sufficient
-- **Docker**: >= 20.x
-- **Docker Compose**: >= 1.29.x
+DockerChat is a self-hosted chat and network-security lab: a Preact interface, a Bun WebSocket backend, Redis storage, an NGINX reverse proxy, a Go traffic filter, and a Flask operations dashboard, brought together with Docker Compose.
 
-## Quick Start
-### 1. Clone and Setup
-```bash
-git clone https://github.com/Nick-Maro/docker-mini-network
-cd docker-mini-network
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Checks](https://github.com/Nick-Maro/DockerChat/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick-Maro/DockerChat/actions/workflows/ci.yml)
 
-# Rename the environment template file
-cp .env.template .env
-```
+[Get started](#get-started) · [How it fits together](#how-it-fits-together) · [Contribute](CONTRIBUTING.md) · [Security model](SECURITY.md)
 
-### 2. Build and Deploy
-```bash
-# Build and start all containers in background
+## Why try it?
+
+- **A complete playground, not just a chat screen.** Follow messages from the browser through a reverse proxy and a WebSocket service into Redis.
+- **Rooms and private conversations.** Public rooms, direct messages, file attachments, message history, unread indicators, and reconnect handling.
+- **Browser-side cryptography to inspect and improve.** Direct-message text and attachments use P-256 ECDH and AES-GCM; commands are signed with RSA/SHA-256, including their payloads.
+- **Operations you can see.** Inspect connection statistics, logs, Redis data, users, and traffic-filter rules from a separate dashboard.
+- **A useful learning codebase.** TypeScript, Go, Python, Docker, and NGINX meet in one small system with regression tests for authentication and the dashboard.
+
+This is an **educational project under active development**. Public room messages are plaintext to the server. The server distributes peer keys, metadata remains visible, and the protocol has not been independently audited. Use test conversations, and read the [security model](SECURITY.md) before exposing it beyond your computer.
+
+## Get started
+
+You need Docker with the Compose v2 plugin and Python 3.10+ for the configuration helper. Docker Desktop works on Windows/macOS; Linux needs Docker Engine and Compose. Node, Bun, and Go are only needed when developing outside containers.
+
+```sh
+git clone https://github.com/Nick-Maro/DockerChat.git
+cd DockerChat
+python tools/setup_env.py
+docker compose config --quiet
 docker compose up --build -d
-
-# Verify all containers are running
-docker compose ps
 ```
 
-## Configurations
-### Host File Setup
-**Important**: Before starting the project, you must configure your system's hosts file to enable subdomain routing.
+The helper creates a private `.env` with a fresh dashboard password, Redis password, and Flask signing key. It refuses to overwrite an existing configuration. On systems where Python is named `python3`, use that command instead.
 
-Add the following entries to your hosts file:
+| Open | Purpose |
+| --- | --- |
+| <http://client.localhost> | Chat interface |
+| <http://dashboard.localhost> | Operations dashboard |
+| <http://api.localhost/status> | Backend status |
 
-**Windows**: Edit `C:\Windows\System32\drivers\etc\hosts`
+The dashboard username is `admin`; find its generated password in `.env` under `ADMIN_PASSWORD`. Open a second browser profile or an incognito window to register another chat identity. Different tabs in the same browser profile share stored keys and identity.
 
-**Linux/macOS**: Edit `/etc/hosts`
+The published ports bind to **127.0.0.1 by default**. Port 80 and 443 must be free. If your system does not resolve the local hostnames, add this entry to your hosts file:
 
-```plaintext
-127.0.0.1 client.localhost
-127.0.0.1 dashboard.localhost
-127.0.0.1 api.localhost
+```text
+127.0.0.1 client.localhost dashboard.localhost api.localhost
 ```
 
-### Environment Setup
-Make sure to rename `.env.template` to `.env` before starting the containers. This file contains necessary environment variables for the application to function properly.
+Hosts file locations: `/etc/hosts` on Linux/macOS, or `C:\Windows\System32\drivers\etc\hosts` on Windows. Editing this file may need administrator privileges.
 
-### Useful Docker Commands
-```bash
-docker compose up                       # Start services (foreground)
-docker compose up -d                    # Start services (background)
-docker compose build --no-cache         # Rebuild containers
-docker compose down                     # Stop and remove containers
-docker compose down -v                  # Remove containers and volumes
-docker compose ps                       # View container status
-docker compose up -d --scale server1=2  # Scale backend servers
+Without Python, copy `.env.template` to `.env` and replace all three `replace-with-...` values with independent random secrets before starting.
+
+### Daily commands
+
+```sh
+docker compose ps                    # Check services
+docker compose logs --tail=100 server # Inspect the backend
+docker compose logs -f reverse-proxy  # Follow proxy logs
+docker compose down                  # Stop; keep persistent volumes
+docker compose up --build -d          # Rebuild after changing source
 ```
 
-## Architecture Overview
-This project implements a complete network security infrastructure with the following components:
-- **NGINX Reverse Proxy**: Load balances requests between two backend servers
-- **Backend Server**: Two TypeScript Bun servers handling requests
-- **Programmable Firewall**: Custom rule-based traffic filtering
-- **Dashboard**: Real-time network monitoring interface
-- **Web-client**: Web client for sending files and messages (in development)
+Redis and dashboard accounts use named volumes. `docker compose down -v` deletes those volumes and their data. Changing `ADMIN_PASSWORD` after first startup does not reset an account already stored in the dashboard database.
 
-The system supports HTTP communication for text messages and uses Docker Compose for container orchestration with bridge networking.
+## How it fits together
 
-![Network Graph](graph.jpg)
+```mermaid
+flowchart LR
+    Browser[Browser / Preact] -->|HTTP + WebSocket| Proxy[NGINX reverse proxy]
+    Proxy --> Client[Static web client]
+    Proxy --> Server[Bun + TypeScript]
+    Proxy --> Dashboard[Flask dashboard]
+    Server --> Redis[(Redis)]
+    Dashboard --> Redis
+    Dashboard --> Logs[(Shared logs and rules)]
+    Filter[Go traffic-filter endpoint] --> Proxy
+```
 
-## Container Architecture
-| Service         | Description                             | URL                   | Purpose                                                |
-| --------------- | --------------------------------------- | --------------------- | ------------------------------------------------------ |
-| `reverse-proxy` | NGINX reverse proxy (subdomain routing) | -                     | Routes traffic to internal services based on subdomain |
-| `server`        | Bun + TS backend                        | `api.localhost`       | Primary application server                             |
-| `firewall`      | Custom traffic filter                   | -                     | Rule-based traffic filtering                           |
-| `client`        | Web client (Preact + TS)                | `client.localhost`    | Main user interface                                    |
-| `dashboard`     | Monitoring web interface                | `dashboard.localhost` | System monitoring and management                       |
-| `redis`         | In-memory key-value database            | -                     | Internal data storage / caching                        |
+The default browser URLs connect directly to the reverse proxy. The Go filter is a **separate endpoint**, not a guarantee that all browser traffic passes through it. It demonstrates IP rules, connection limits, rate limiting, and forwarding; its best-effort iptables setup may be unavailable in unprivileged containers. The optional `client_terminal` profile references a development client directory that is not included in this repository and is not part of the quick start.
 
-## Acknowledgements
+| Directory | Responsibility |
+| --- | --- |
+| `client/` | Preact UI, local browser identity, encryption helpers |
+| `backend-servers/server/` | Bun WebSocket commands, authentication, persistence |
+| `dashboard/` | Flask login, monitoring and administration |
+| `firewall/` | Go traffic filtering and forwarding |
+| `reverse-proxy/` | NGINX virtual hosts and WebSocket upgrades |
+| `docs/` | Next.js documentation site |
+| `tests/` | Crypto, command handling, dashboard and setup regressions |
 
-I would like to thank all our contributors, who helped make this project possible. Your feedback and collaboration have been invaluable.
-<br>
-<br>
-<a href="https://github.com/Nick-Maro/DockerChat/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Nick-Maro/DockerChat" />
-</a>
+## Configuration
 
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+`.env.template` documents the service addresses and ports. `VITE_*` values are embedded into the client at **build time**: rebuild the client after changing them. `DEBUG=FALSE` disables backend diagnostics. The Flask debugger is always disabled.
 
-**⚠️ Security Notice**: This is a development/educational project. For production use, ensure proper security hardening, regular updates, and professional security review.
+For a deliberate external deployment, configure real domains, HTTPS certificates, matching client/API build settings, and the bind address. The existing `PRODUCTION=TRUE` path expects certificates under `/etc/letsencrypt`; it does not obtain them for you. The Flask development server, dashboard permissions, CSRF protection, rate limits, and the cryptographic design need further work before a production deployment.
+
+The VPS workflow runs only by manual dispatch against the `production` environment. Configure `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_KEY`, and `DEPLOY_KNOWN_HOSTS` as that environment's GitHub Actions secrets. Obtain the known-hosts entry through a trusted channel; the workflow does not accept a host key discovered during deployment. No maintainer-specific host, username or directory is stored in the workflow.
+
+**Protocol change:** browser and backend now sign the complete canonical JSON payload, not only command metadata. Update both together and refresh open browser clients. Unsigned ECDH key updates and legacy signatures are rejected. Direct messages and private files fail if an encryption key is unavailable; they do not silently fall back to plaintext.
+
+## Develop and verify
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for service setup and contribution guidelines. With Node.js 24+, Python 3.11+, and Bun installed:
+
+```sh
+npm test
+npm --prefix client ci
+npm --prefix client run typecheck
+npm --prefix client run build
+cd backend-servers/server
+bun install --frozen-lockfile
+bun run typecheck
+cd ../..
+bun test tests/command-handler.test.ts
+python -m pip install -r dashboard/requirements.txt
+python -m unittest discover -s tests -p 'test_*.py'
+```
+
+Use a Python virtual environment for the dashboard dependencies. The test suite uses temporary databases and fake sockets; it does not need Redis or a running Compose stack. CI also validates the Compose configuration and compiles the Linux Go service.
+
+## Make it better
+
+Good first contributions include browser integration tests, accessibility, dashboard authorization and CSRF protection, shared replay protection for multiple backend replicas, and clearer peer-key verification. Start with a focused issue or small pull request. Reports with reproduction steps are especially useful.
+
+If DockerChat helps you learn or build something, a star and a short note about what you tried help other people find it.
+
+## Credits and license
+
+Created by the contributors listed in [LICENSE](LICENSE). The original MIT license and all author credits are preserved. Bundled word-filter lists have [their own attribution](backend-servers/server/src/filters/ATTRIBUTION.md).
+
+*Italiano: DockerChat è un laboratorio locale per esplorare chat, crittografia nel browser e servizi Docker. Per iniziare bastano i quattro comandi nella sezione “Get started”; usa conversazioni di prova e consulta i limiti di sicurezza prima di pubblicarlo online.*

@@ -1,0 +1,20 @@
+name: Bug report
+description: Report a reproducible problem with DockerChat.
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, private keys, chat history, or `.env` files. See SECURITY.md for private vulnerability reporting.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected behavior and exact reproduction steps.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker/Compose versions, browser, repository revision, and relevant redacted logs.
+    validations:
+      required: true

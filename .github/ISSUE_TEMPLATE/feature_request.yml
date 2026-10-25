@@ -1,0 +1,10 @@
+name: Feature idea
+description: Suggest a focused improvement.
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What would you like to do?
+      description: Describe the use case, proposed behavior, and any alternatives you tried.
+    validations:
+      required: true
