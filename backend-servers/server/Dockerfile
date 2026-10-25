@@ -5,7 +5,7 @@ WORKDIR /app
 RUN apk update && apk add --no-cache curl
 
 COPY package.json bun.lock ./
-RUN bun install
+RUN bun install --frozen-lockfile
 
 COPY . .
 

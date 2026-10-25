@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copio package.json e installo dipendenze
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # Passo le variabili di build (per Vite)
 ARG VITE_API_HOST

@@ -10,12 +10,20 @@ http {
     keepalive_timeout 65;
     keepalive_requests 100;
     limit_req_zone $binary_remote_addr zone=one:10m rate=10r/s;
-    proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=backend_cache:50m max_size=500m inactive=60m use_temp_path=off;
 
     # Backend API pool
     upstream backend_pool {
         server SERVER_UPSTREAM_PLACEHOLDER;
         keepalive 32;
+    }
+
+    # An internal probe works in both HTTP development and TLS deployment mode.
+    server {
+        listen 127.0.0.1:8081;
+        location = /healthz {
+            access_log off;
+            return 200 "ok\n";
+        }
     }
 
     # CLIENT SERVER BLOCK
@@ -73,7 +81,6 @@ http {
             add_header 'Access-Control-Allow-Origin' '*' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
             add_header 'Access-Control-Allow-Headers' 'Origin, Content-Type, Accept, Authorization' always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
             
             if ($request_method = OPTIONS) {
                 return 204;
@@ -103,11 +110,9 @@ http {
             proxy_buffers 8 16k;
             proxy_busy_buffers_size 32k;
             
-            # Caching
-            proxy_cache backend_cache;
-            proxy_cache_valid 200 10m;
-            proxy_cache_methods GET HEAD;
-            proxy_cache_use_stale error timeout updating;
+            # Authenticated API responses must never be shared between clients.
+            proxy_cache off;
+            add_header Cache-Control "no-store" always;
         }
     }
 }

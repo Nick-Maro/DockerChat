@@ -7,7 +7,7 @@ services:
     container_name: firewall
     restart: unless-stopped
     ports:
-      - "${FIREWALL_PORT}:${FIREWALL_PORT}"
+      - "${BIND_ADDRESS:-127.0.0.1}:${FIREWALL_PORT}:${FIREWALL_PORT}"
     volumes:
       - shared_logs:/var/log/shared
     env_file:
@@ -26,8 +26,8 @@ services:
       - client
       - server
     ports:
-      - "80:80"
-      - "443:443"
+      - "${BIND_ADDRESS:-127.0.0.1}:80:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:443:443"
     networks:
       - clients
       - servers
@@ -37,7 +37,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${REVERSE_PROXY_PORT}"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8081/healthz"]
       interval: 30s
       timeout: 3s
       retries: 3

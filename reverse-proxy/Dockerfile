@@ -1,6 +1,6 @@
 FROM nginx:alpine
 
-RUN apk add --no-cache gettext dos2unix
+RUN apk add --no-cache gettext dos2unix curl
 
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY entrypoint.sh /entrypoint.sh
