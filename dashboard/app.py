@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -7,6 +7,7 @@ import os
 import redis
 from redis.exceptions import RedisError
 from dotenv import load_dotenv
+from urllib.parse import urlsplit
 from auth import init_db, get_user_by_id, get_user_by_username, verify_password, update_last_login, get_all_users, create_user, delete_user
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -78,7 +79,12 @@ def login():
             
             # Redirect to next page if specified, otherwise to dashboard
             next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('index'))
+            # Only local paths are accepted; browsers normalize backslashes to slashes.
+            if next_page and next_page.startswith('/') and not next_page.startswith('//') and '\\' not in next_page:
+                target = urlsplit(next_page)
+                if not target.scheme and not target.netloc:
+                    return redirect(next_page)
+            return redirect(url_for('index'))
         else:
             flash("Invalid username or password.", "error")
     
@@ -443,4 +449,4 @@ if __name__ == "__main__":
     print(f"Firewall log path: {FIREWALL_LOG_PATH}")
     print(f"Redis available: {REDIS_AVAILABLE}")
 
-    app.run(host="0.0.0.0", port=80, debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("DASHBOARD_PORT", "80")), debug=False)
