@@ -1,4 +1,11 @@
 {
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/auth.test.mjs",
+    "test:backend": "bun test tests/command-handler.test.ts",
+    "test:dashboard": "python -m unittest discover -s tests -p test_*.py",
+    "build:client": "npm --prefix client run build"
+  },
   "devDependencies": {
     "@types/node": "^24.3.1"
   }

@@ -1,5 +1,20 @@
 import crypto from 'crypto';
 
+// Keep this wire format in sync with client/src/shared/utils.ts.
+// Sort object keys recursively, preserving array order, and omit only the
+// top-level signature. Signing metadata alone leaves recipients and content mutable.
+export function signedPayload(message: Record<string, any>): string {
+    const canonicalize = (value: any): any => {
+        if (Array.isArray(value)) return value.map(canonicalize);
+        if (value !== null && typeof value === 'object') {
+            return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalize(value[key])]));
+        }
+        return value;
+    };
+    const { signature, ...payload } = message;
+    return JSON.stringify(canonicalize(payload));
+}
+
 export class CryptoAuth {
     private static usedNonces = new Map<string, number>();
     private static readonly NONCE_TTL = 300000; // 5 minutes
@@ -24,6 +39,9 @@ export class CryptoAuth {
     }
 
     static validateNonce(nonce: string, timestamp: number): { valid: boolean; error?: string } {
+        if (typeof nonce !== 'string' || nonce.length < 16 || nonce.length > 128 || !Number.isSafeInteger(timestamp)) {
+            return { valid: false, error: 'Invalid nonce or timestamp' };
+        }
         const now = Date.now();
         this.cleanOldNonces();
         if (Math.abs(now - timestamp) > this.MAX_TIME_SKEW) return { valid: false, error: 'Request timestamp outside acceptable window' };
@@ -42,30 +60,33 @@ export class CryptoAuth {
     static createSignedMessage(command: string, clientId: string, privateKey: string, extraData: Record<string, any> = {}): string {
         const nonce = this.generateNonce();
         const timestamp = Date.now();
-        const dataToSign = `${command}|${clientId}|${nonce}|${timestamp}`;
-        const signature = this.signData(dataToSign, privateKey);
-
-        return JSON.stringify({
+        const message = {
+            ...extraData,
             command,
             client_id: clientId,
             nonce,
             timestamp,
-            signature,
-            ...extraData
-        });
+        };
+        const signature = this.signData(signedPayload(message), privateKey);
+        return JSON.stringify({ ...message, signature });
     }
 
     static verifyMessage(message: any, expectedClientId: string, publicKey: string): { valid: boolean; error?: string } {
+        if (!message || typeof message !== 'object' || Array.isArray(message)) return { valid: false, error: 'Invalid message' };
         const { command, client_id, nonce, timestamp, signature } = message;
 
-        if (!command || !client_id || !nonce || !timestamp || !signature) return { valid: false, error: 'Missing required authentication fields' };
+        if (typeof command !== 'string' || !command || typeof client_id !== 'string' || !client_id || typeof signature !== 'string' || !signature) return { valid: false, error: 'Missing required authentication fields' };
         if (client_id !== expectedClientId) return { valid: false, error: 'Client ID mismatch with WebSocket session' };
 
+        // Verify before consuming a nonce: forged traffic must not invalidate
+        // a legitimate message that has not been received yet.
+        try {
+            if (!this.verifySignature(signedPayload(message), signature, publicKey)) return { valid: false, error: 'Invalid signature' };
+        } catch {
+            return { valid: false, error: 'Invalid signature' };
+        }
         const nonceResult = this.validateNonce(nonce, timestamp);
         if (!nonceResult.valid) return nonceResult;
-
-        const dataToVerify = `${command}|${client_id}|${nonce}|${timestamp}`;
-        if (!this.verifySignature(dataToVerify, signature, publicKey)) return { valid: false, error: 'Invalid signature' };
         return { valid: true };
     }
 

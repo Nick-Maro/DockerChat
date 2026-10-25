@@ -21,7 +21,12 @@ export async function generateKeyPair(): Promise<{ publicKeyPem: string, private
 }
 
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  const bytes = new Uint8Array(buffer);
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  }
+  return btoa(chunks.join(''));
 }
 
 export function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -47,18 +52,31 @@ export async function getOrCreatePublicKey(): Promise<string> {
   return publicKeyPem;
 }
 
+// Same canonical wire format as backend-servers/server/utils/cryptography/auth.ts.
+export function signedPayload(message: Record<string, any>): string {
+  const canonicalize = (value: any): any => {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalize(value[key])]));
+    }
+    return value;
+  };
+  const { signature, ...payload } = message;
+  return JSON.stringify(canonicalize(payload));
+}
+
 export async function sendAuthenticatedMessage(sendMessage: (msg: any) => void, message: any) {
   const privateKey = await getPrivateKey();
   if(!privateKey){
     console.error("Cannot send authenticated message: Private key is missing.");
     throw new Error("Private key missing");
   }
-  const { command, client_id, ...extraData } = message;
+  const { command, client_id, signature: ignoredSignature, ...extraData } = message;
   const nonce = crypto.randomUUID();
   const timestamp = Date.now();
-  const dataToSign = `${command}|${client_id}|${nonce}|${timestamp}`;
-  const signature = await signMessage(privateKey, dataToSign);
-  const finalMessage = { command, client_id, nonce, timestamp, signature, ...extraData };
+  const payload = { ...extraData, command, client_id, nonce, timestamp };
+  const signature = await signMessage(privateKey, signedPayload(payload));
+  const finalMessage = { ...payload, signature };
   
   sendMessage(finalMessage);
 }
